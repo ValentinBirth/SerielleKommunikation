@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 import re
 import logging
+
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
@@ -12,11 +13,9 @@ logger = logging.getLogger(__name__)
 knownHost = []
 
 class readingThread(threading.Thread):
-    def __init__(self, threadID, name):
+    def __init__(self):
       threading.Thread.__init__(self)
       self._stopevent = threading.Event()
-      self.threadID = threadID
-      self.name = name
 
     def searchAndSaveAddr(self,msg):
         global knownHost
@@ -86,7 +85,7 @@ def main():
         ser = serial.Serial(selectedPort)
 
         global readThread
-        readThread = readingThread(1, "Reader1")
+        readThread = readingThread()
         readThread.start()
 
         while True:
