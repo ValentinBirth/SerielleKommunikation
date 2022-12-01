@@ -3,106 +3,62 @@ import serial.tools.list_ports, serial
 import time
 from datetime import datetime
 import re
-import logging
-
-logging.basicConfig(level=logging.ERROR)
-logger = logging.getLogger(__name__)
+from concurrent.futures import ThreadPoolExecutor
 
 #Config String: AT+CFG=433920000,5,6,10,4,1,0,0,0,0,3000,8,4
 
-knownHost = []
+class SerCom():
+    ser = None
+    readThread = None
+    knownHosts = []
 
-class readingThread(threading.Thread):
-    def __init__(self):
-      threading.Thread.__init__(self)
-      self._stopevent = threading.Event()
-
-    def searchAndSaveAddr(self,msg):
-        global knownHost
+    def searchAndSaveAddr(self, msg: str):
         msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg)
         if msgMatch != None:
             msg = msgMatch.group()
             addrStr = msg.split(",")[1].strip()
-            if addrStr not in knownHost:
-                knownHost.append(addrStr)
-            print(knownHost)
+            if addrStr not in self.knownHost:
+                self.knownHost.append(addrStr)
+            print(self.knownHost)
 
-
-    def run(self):
+    def reading(self):
         """ If something is in the input buffer its printed to the prompt """
+        while self.connected:
+            if self.ser.in_waiting > 0:
+                data = self.ser.readline()
+                if len(data) > 0:
+                    print("<"+datetime.now().strftime("%H:%M:%S.%f")+" From "+self.ser.name+'>', data.decode("utf-8").strip())
+                    self.searchAndSaveAddr(data.decode("utf-8").strip())
+            time.sleep(0.01)
+
+    def write(self,msg: str):
+        if msg != "":
+            msg = msg.strip()+"\r\n"
+            self.ser.write(msg.encode("utf-8"))
+
+    def setUp(self):
+        ports = {}
+        ports.clear()
+        portList = serial.tools.list_ports.comports()
+
+        for ListPortInfo in portList:
+            ports[len(ports)+1] = ListPortInfo
+
+        msg = "Choose Port: \n"
+        for key in ports:
+            keyStr = str(key)
+            value = ports[key]
+            valueStr = str(value)
+            msg = msg+keyStr+": "+valueStr+"\n"
+        msg = msg + str(len(ports)+1)+": Manual Input \n"
         try:
-            while not self._stopevent.is_set():
-                if ser.in_waiting > 0:
-                    data = ser.readline()
-                    if len(data) > 0:
-                        print("<"+str(datetime.now())+" From "+ser.name+'>', data.decode("utf-8").strip())
-                        self.searchAndSaveAddr(data.decode("utf-8").strip())
-                time.sleep(0.01)
-        except Exception as err:
-            logger.exception(err)
+            inputPort = str(ports[int(input(msg))].name)
+            self.ser = serial.Serial(inputPort)
+        except KeyError:
+            self.ser = serial.Serial(input("Manual Input: "))
+        self.connected = True
+        self.readThread = threading.Thread(target=self.reading, daemon=True).start()
     
-    def join(self, timeout=None):
-        """ Exit the reader thread """
-        self._stopevent.set()
-        threading.Thread.join(self, timeout)
-
-def exit():
-    """ Cleanup and close the programm """
-    try:
-        readThread.join()
-        ser.close()
-    except Exception as err:
-        logger.exception(err)
-    print("\nProgramm ended")
-
-def selectPort():
-    ports = {}
-    ports.clear()
-    portList = serial.tools.list_ports.comports()
-
-    for ListPortInfo in portList:
-        ports[len(ports)+1] = ListPortInfo
-    
-    msg = "Choose Port: \n"
-    for key in ports:
-        keyStr = str(key)
-        value = ports[key]
-        valueStr = str(value)
-        msg = msg+keyStr+": "+valueStr+"\n"
-    msg = msg + str(len(ports)+1)+": Manual Input \n"
-    try:
-        return str(ports[int(input(msg))].name)
-    except KeyboardInterrupt:
-        exit()
-    except KeyError:
-        return input("Manual Input: ")
-
-
-def main():
-    try:
-        selectedPort = selectPort()
-        global ser
-        ser = serial.Serial(selectedPort)
-
-        global readThread
-        readThread = readingThread()
-        readThread.start()
-
-        while True:
-            inputMsg = input()
-            if inputMsg == "quit":
-                break
-            if inputMsg != "":
-                inputMsg = inputMsg.strip()+"\r\n"
-                print("<"+str(datetime.now())+" To   "+ser.name+"> "+inputMsg.strip())
-                ser.write(inputMsg.encode("utf-8"))
-            time.sleep(0.03)
-        exit()
-    except KeyboardInterrupt:
-        exit()
-    except serial.SerialException:
-        print("Port not found")
-        main()
-
-if __name__ == '__main__':
-    main()
+    def exit(self):
+        self.connected = False
+        self.ser.close()
