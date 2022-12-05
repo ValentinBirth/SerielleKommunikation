@@ -1,6 +1,5 @@
 from cmd import Cmd
-import serial
-from SeComClient import SerCom
+from SerComClient import SerCom
 import logging
 
  

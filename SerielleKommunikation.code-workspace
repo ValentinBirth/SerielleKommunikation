@@ -6,9 +6,6 @@
 		{
 			"name": "UART-Tester",
 			"path": "../UART-Tester"
-		},
-		{
-			"path": "../BluetoothCam"
 		}
 	],
 	"settings": {}
