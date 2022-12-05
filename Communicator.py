@@ -2,7 +2,6 @@ from cmd import Cmd
 from SerComClient import SerCom
 from AODV import AODV
 import logging
-
  
 class MainPrompt(Cmd):
     logging.basicConfig(level=logging.ERROR)
@@ -23,11 +22,11 @@ class MainPrompt(Cmd):
         return True
  
     def do_setUp(self, inp):
-        "Configurate and start serial connection"
+        """Configurate and start serial connection"""
         self.client.setUp()
 
     def do_send(self, inp):
-        "Sends agruments to serial Port"
+        """Sends agruments to serial Port"""
         try:
             self.client.write(inp)
         except:

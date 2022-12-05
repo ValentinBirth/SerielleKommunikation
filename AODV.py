@@ -26,9 +26,7 @@ class AODV:
             print("Got RREQ")
         package.decode(msg)
         return package
-
-
-
+        
 class RouteRequest:
     type = 1      
     flagOne = False
