@@ -1,8 +1,33 @@
 import base64
 import bitstring
+import re
+
 class AODV:
     routingTable = {}
     reverseRoutingTable = {}
+    lastAdress = None
+
+    def parse(self, msg:str):
+        msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg)
+        if msgMatch != None:
+            msg = msgMatch.group()
+            addrStr = msg.split(",")[1].strip()
+            self.lastAdress = addrStr
+        payload = msg.strip(",")[3]
+        package = self.decode(payload)
+
+    def decode(self, msg: str):
+        base64_bytes = msg.encode("utf-8")
+        message_bytes = base64.b64decode(base64_bytes)
+        byteArray = bitstring.BitArray(bytes=message_bytes)
+        type = byteArray[0:6].uint
+        if type == 1:
+            package = RouteRequest()
+            print("Got RREQ")
+        package.decode(msg)
+        return package
+
+
 
 class RouteRequest:
     type = 1      
@@ -18,10 +43,10 @@ class RouteRequest:
     destinationSequence = 0
     originatorAdress = "000F"
     originatorSequence = 0
-    format = "int6=type, bool1=flagOne, bool1=flagTwo, bool1=flagThree, bool1=flagFour, bool1=flagFive, bool1=flagSix, int6=hopCount, int6=requestID, hex16=destinationAdress, int8=destinationSequence, hex16=originatorAdress ,int8=originatorSequence"
+    format = "uint6=type, bool1=flagOne, bool1=flagTwo, bool1=flagThree, bool1=flagFour, bool1=flagFive, bool1=flagSix, uint6=hopCount, uint6=requestID, hex16=destinationAdress, int8=destinationSequence, hex16=originatorAdress, uint8=originatorSequence"
 
     def decode(self, msg: str):
-        base64_bytes = msg.encode('ascii')
+        base64_bytes = msg.encode("utf-8")
         message_bytes = base64.b64decode(base64_bytes)
         byteArray = bitstring.BitArray(bytes=message_bytes)
         arglist = byteArray.unpack(self.format)
@@ -42,4 +67,4 @@ class RouteRequest:
     def encode(self):
         byteArray = bitstring.pack(self.format, **self.__dict__)
         base64string = base64.b64encode(byteArray.tobytes())
-        return base64string.decode("ascii")
+        return base64string.decode("utf-8")

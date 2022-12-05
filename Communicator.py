@@ -1,5 +1,6 @@
 from cmd import Cmd
 from SerComClient import SerCom
+from AODV import AODV
 import logging
 
  
@@ -9,7 +10,8 @@ class MainPrompt(Cmd):
     logger = logging.getLogger(__name__)
     prompt = "sc> "
     intro = "Welcome! Type ? to list commands"
-    client = SerCom()
+    protocol = AODV()
+    client = SerCom(protocol)
  
     def do_exit(self, inp):
         """Exit the application. Shorthand: x q Ctrl-D."""

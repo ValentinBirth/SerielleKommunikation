@@ -1,25 +1,18 @@
 import threading
 import serial.tools.list_ports, serial
 import time
-from datetime import datetime
 import re
-from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from AODV import AODV
 
 #Config String: AT+CFG=433920000,5,6,10,4,1,0,0,0,0,3000,8,4
 
 class SerCom():
+    def __init__(self, protocol: AODV):
+        self.protocol = protocol
     ser = None
     readThread = None
     knownHosts = []
-
-    def searchAndSaveAddr(self, msg: str):
-        msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg)
-        if msgMatch != None:
-            msg = msgMatch.group()
-            addrStr = msg.split(",")[1].strip()
-            if addrStr not in self.knownHost:
-                self.knownHost.append(addrStr)
-            print(self.knownHost)
 
     def reading(self):
         """ If something is in the input buffer its printed to the prompt """
@@ -27,8 +20,12 @@ class SerCom():
             if self.ser.in_waiting > 0:
                 data = self.ser.readline()
                 if len(data) > 0:
-                    print("<"+datetime.now().strftime("%H:%M:%S.%f")+" From "+self.ser.name+'>', data.decode("utf-8").strip())
-                    self.searchAndSaveAddr(data.decode("utf-8").strip())
+                    msg = data.decode("utf-8").strip()
+                    msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg)
+                    if msgMatch != None:
+                        self.protocol.parse(msg)
+                    else:
+                        print("<"+datetime.now().strftime("%H:%M:%S.%f")+" From "+self.ser.name+'>', msg)
             time.sleep(0.01)
 
     def write(self,msg: str):
