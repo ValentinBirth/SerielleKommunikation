@@ -29,9 +29,10 @@ class SerCom():
             time.sleep(0.01)
 
     def write(self,msg: str):
-        if msg != "":
-            msg = msg.strip()+"\r\n"
-            self.ser.write(msg.encode("utf-8"))
+        if self.ser != None:
+            if msg != "":
+                msg = msg.strip()+"\r\n"
+                self.ser.write(msg.encode("utf-8"))
 
     def setUp(self):
         ports = {}
