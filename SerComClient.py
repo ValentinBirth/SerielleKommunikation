@@ -8,11 +8,25 @@ from AODV import AODV
 #Config String: AT+CFG=433920000,5,6,10,4,1,0,0,0,0,3000,8,4
 
 class SerCom():
-    def __init__(self, protocol: AODV):
-        self.protocol = protocol
+    protocol = AODV()
     ser = None
     readThread = None
     knownHosts = []
+    inProcessing = False
+
+    def send(self, msg):
+        msgLenght = len(msg)
+        cmd = "AT+SEND="+str(msgLenght)
+        self.write(cmd)
+        while True:
+            if not self.inProcessing:
+                    self.write(msg)
+                    break
+        while True:
+            if not self.inProcessing:
+                    print("Message sent")
+                    break
+        
 
     def reading(self):
         """ If something is in the input buffer its printed to the prompt """
@@ -25,7 +39,9 @@ class SerCom():
                     if msgMatch != None:
                         self.protocol.parse(msg)
                     else:
-                        print("<"+datetime.now().strftime("%H:%M:%S.%f")+" From "+self.ser.name+'>', msg)
+                        if msg == "AT,OK":
+                            self.inProcessing = not self.inProcessing
+                            print("Command excuted")
             time.sleep(0.01)
 
     def write(self,msg: str):

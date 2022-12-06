@@ -1,6 +1,5 @@
 from cmd import Cmd
 from SerComClient import SerCom
-from AODV import AODV
 import logging
  
 class MainPrompt(Cmd):
@@ -9,8 +8,7 @@ class MainPrompt(Cmd):
     logger = logging.getLogger(__name__)
     prompt = "sc> "
     intro = "Welcome! Type ? to list commands"
-    protocol = AODV()
-    client = SerCom(protocol)
+    client = SerCom()
  
     def do_exit(self, inp):
         """Exit the application. Shorthand: x q Ctrl-D."""
@@ -25,12 +23,16 @@ class MainPrompt(Cmd):
         """Configurate and start serial connection"""
         self.client.setUp()
 
-    def do_send(self, inp):
+    def do_sendLow(self, inp):
         """Sends agruments to serial Port"""
         try:
             self.client.write(inp)
         except:
             print("No configuration preset, use config first")
+
+    def do_send(self, inp):
+        """Sends Message through LORA Module"""
+        self.client.send(inp)
  
     def default(self, inp):
         if inp == 'x' or inp == 'q':
