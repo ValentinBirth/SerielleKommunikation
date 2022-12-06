@@ -13,6 +13,7 @@ class SerCom():
     logger = logging.getLogger(__name__)
     protocol = AODV()
     inProcessing = False
+    connected = False
     inputQueue = Queue(maxsize=0)
     outputQueue = Queue(maxsize=0)
 
@@ -53,7 +54,10 @@ class SerCom():
             time.sleep(0.01)
 
     def write(self,msg: str):
-        self.outputQueue.put(msg)
+        if self.connected:
+            self.outputQueue.put(msg)
+        else:
+            print("No Port open, use setUp first")
 
     def setUp(self):
         ports = {}

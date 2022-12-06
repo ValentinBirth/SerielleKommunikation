@@ -25,10 +25,7 @@ class MainPrompt(Cmd):
 
     def do_sendCMD(self, inp):
         """Sends commands to serial Port"""
-        try:
-            self.client.write(inp)
-        except:
-            print("No configuration preset, use config first")
+        self.client.write(inp)
 
     def do_send(self, inp):
         """Sends Message through LORA Module"""
