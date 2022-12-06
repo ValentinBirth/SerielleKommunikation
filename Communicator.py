@@ -23,8 +23,8 @@ class MainPrompt(Cmd):
         """Configurate and start serial connection"""
         self.client.setUp()
 
-    def do_sendLow(self, inp):
-        """Sends agruments to serial Port"""
+    def do_sendCMD(self, inp):
+        """Sends commands to serial Port"""
         try:
             self.client.write(inp)
         except:
