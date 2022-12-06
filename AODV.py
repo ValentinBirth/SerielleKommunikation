@@ -17,7 +17,7 @@ class AODV:
         package = self.decode(payload)
 
     def decode(self, msg: str):
-        base64_bytes = msg.encode("utf-8")
+        base64_bytes = msg.encode("ascii")
         message_bytes = base64.b64decode(base64_bytes)
         byteArray = bitstring.BitArray(bytes=message_bytes)
         type = byteArray[0:6].uint
@@ -44,7 +44,7 @@ class RouteRequest:
     format = "uint6=type, bool1=flagOne, bool1=flagTwo, bool1=flagThree, bool1=flagFour, bool1=flagFive, bool1=flagSix, uint6=hopCount, uint6=requestID, hex16=destinationAdress, int8=destinationSequence, hex16=originatorAdress, uint8=originatorSequence"
 
     def decode(self, msg: str):
-        base64_bytes = msg.encode("utf-8")
+        base64_bytes = msg.encode("ascii")
         message_bytes = base64.b64decode(base64_bytes)
         byteArray = bitstring.BitArray(bytes=message_bytes)
         arglist = byteArray.unpack(self.format)
@@ -65,4 +65,4 @@ class RouteRequest:
     def encode(self):
         byteArray = bitstring.pack(self.format, **self.__dict__)
         base64string = base64.b64encode(byteArray.tobytes())
-        return base64string.decode("utf-8")
+        return base64string.decode("ascii")
