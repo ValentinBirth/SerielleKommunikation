@@ -1,11 +1,16 @@
 import base64
 import bitstring
 import re
+from queue import Queue
+from SerComClient import SerCom
 
 class AODV:
     routingTable = {}
     reverseRoutingTable = {}
     lastAdress = None
+    inputQueue = Queue(maxsize=0)
+    outputQueue = Queue(maxsize=0)
+    serialPortClient = SerCom(inputQueue,outputQueue)
 
     def parse(self, msg:str):
         msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg)

@@ -2,20 +2,19 @@ import threading
 import serial.tools.list_ports, serial
 import time
 import re
-from datetime import datetime
 from queue import Queue
 from AODV import AODV
 import logging
 
 class SerCom():
+    def __init__(self, inputQueue: Queue, outputQueue: Queue):
+        self.inputQueue = inputQueue
+        self.outputQueue = outputQueue
     logging.basicConfig(level=logging.DEBUG)
 
     logger = logging.getLogger(__name__)
-    protocol = AODV()
     inProcessing = False
     connected = False
-    inputQueue = Queue(maxsize=0)
-    outputQueue = Queue(maxsize=0)
 
     def send(self, msg):
         msgLenght = len(msg)
@@ -29,17 +28,16 @@ class SerCom():
         while self.connected:
             if self.ser.in_waiting > 0:
                 data = self.ser.readline()
-                if len(data) > 0:
-                    msg = data.decode("ascii").strip()
-                    msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg) #msg from other modules
-                    if msgMatch != None:
-                        self.protocol.parse(msg)
+                msg = data.decode("ascii").strip()
+                msgMatch = re.match("AT,(OK|[0-9a-zA-Z.-]*(,OK)*)", msg) #cmd confirmation
+                if msgMatch != None:
+                    match = msgMatch.group()
+                    if "SENDING" not in match: # not a cmd confirmation but not filtered by regex
+                        self.inProcessing = False
+                msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg) #msg from other modules
+                if msgMatch != None:
+                    self.inputQueue.put(msg)
                     self.logger.debug(msg)
-                    msgMatch = re.match("(AT,OK|ERR:[A-Z_]*)", msg) #cmd confirmation/err from module
-                    if msgMatch == None:
-                        self.inputQueue.put(msg)
-                    self.inProcessing = False
-                            
             time.sleep(0.01)
 
     def writing(self):
