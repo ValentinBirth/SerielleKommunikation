@@ -150,7 +150,7 @@ class AODV:
     lastAdress = None
     ownAdress = None
     sequenceNumber = 0
-    lastRequestID = 0
+    requestID = 0
     inputQueue = Queue(maxsize=0)
     outputQueue = Queue(maxsize=0)
     rreqBuffer = []
@@ -180,12 +180,13 @@ class AODV:
         self.routingTable.updateEntryWithDestination(self.lastAdress)
         rrep.hopCount += 1
         self.routingTable.updateEntryWithRREP(rrep,self.lastAdress)
-        destRoute = self.routingTable.getEntry(rrep.destinationAdress)
-        destRoute.precursers.append(destRoute.nextHop)
-        destRoute.lifetime = max(destRoute.lifetime, int(time*1000)+AODV.ACTIVE_ROUTE_TIMEOUT)
-        sourceRoute = self.reverseRoutingTable.getEntry(rrep.originatorAdress)
-        sourceRoute.precursers.append(sourceRoute.nextHop)
-        self.send(destRoute.nextHop,rrep.encode())
+        reverseRoute = self.reverseRoutingTable.getEntry(rrep.originatorAdress)
+        reverseRoute.lifetime = max(reverseRoute.lifetime,int(time()*1000)+AODV.ACTIVE_ROUTE_TIMEOUT)
+        forwardRoute = self.routingTable.getEntry(rrep.destinationAdress)
+        forwardRoute.precursers.append(reverseRoute.nextHop)
+        nextHopRoute = self.routingTable.getEntry(reverseRoute.nextHop)
+        nextHopRoute.precursers.append(rrep.originatorAdress)
+        self.send(reverseRoute.nextHop,rrep.encode())
 
     def send(destinationAdress: str, msg: str):
         ...
@@ -193,20 +194,20 @@ class AODV:
     def generateRREP(self, rreq: RouteRequest, previousAdress: str):
         rrep = RouteReply()
         if rreq.destinationAdress == self.ownAdress:
+            rrep.hopCount = 0
             rrep.lifetime = AODV.MY_ROUTE_TIMEOUT
             if self.sequenceNumber+1 == rreq.destinationSequence:
                 self.sequenceNumber += 1
             rrep.destinationSequence = self.sequenceNumber
             return
-        route = self.routingTable.getEntry(rreq.destinationAdress)
-        route.precursers.append(previousAdress)
-        reverseRoute = self.reverseRoutingTable.getEntry(rreq.originatorAdress)
-        reverseRoute.precursers = route.nextHop
-        self.routingTable.updateEntry(route)
-        self.reverseRoutingTable.updateEntry(reverseRoute)
-        rrep.destinationSequence = route.destinationSequenceNumber
-        rrep.hopCount = route.hopCount
-        rrep.lifetime = route.lifetime - int(time()*1000)
+        if self.routingTable.hasEntryForDestination(rreq.destinationAdress):
+            forwardRoute = self.routingTable.getEntry(rreq.destinationAdress)
+            reverseRoute = self.reverseRoutingTable.getEntry(rreq.originatorAdress)
+            rrep.destinationSequence = forwardRoute.destinationSequenceNumber
+            forwardRoute.precursers.append(self.lastAdress)
+            reverseRoute.precursers.append(forwardRoute.nextHop)
+            rrep.hopCount = forwardRoute.hopCount
+            rrep.lifetime = forwardRoute.lifetime - int(time()*1000)
         self.send(rreq.originatorAdress, rrep.encode())
 
     def waitForResponse(self):
@@ -216,10 +217,11 @@ class AODV:
         rreq = RouteRequest()
         if isSequenceNumberUnknown:
             rreq.unknownSequenceNumber = True
-        rreq.destinationSequence = destinationSequenceNumber
         self.sequenceNumber += 1
         rreq.originatorSequence = self.sequenceNumber
-        rreq.requestID = self.lastRequestID+1
+        self.requestID += 1
+        rreq.requestID = self.requestID
+        rreq.hopCount = 0
         self.rreqBuffer.append((rreq.requestID,rreq.originatorAdress))
         self.send("FFFF", rreq.encode())
         self.waitForResponse()
