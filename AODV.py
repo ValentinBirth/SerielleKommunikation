@@ -63,7 +63,7 @@ class RouteReply:
     originatorAdress = None
     hopCount = 0
 
-    format = "uint6=type, unit18=lifetime, hex16=destinationAdress, int8=destinationSequence, hex16=originatorAdress, uint8=hopCount"
+    format = "uint6=type, uint18=lifetime, hex16=destinationAdress, int8=destinationSequence, hex16=originatorAdress, uint8=hopCount"
     
     def decode(self, msg: str):
         base64_bytes = msg.encode("ascii")
