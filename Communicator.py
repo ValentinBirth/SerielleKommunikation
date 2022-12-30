@@ -29,7 +29,20 @@ class MainPrompt(Cmd):
 
     def do_send(self, inp):
         """Sends Message through LORA Module"""
-        self.client.send(inp)
+        adress, msg = inp.split(" ")
+        self.client.send(adress,msg)
+
+    def do_queue(self,inp):
+        """Prints content of queues for debugging"""
+        if inp == "input":
+            print(list(self.client.inputQueue.queue))
+            return
+        if inp == "output":
+            print(list(self.client.outputQueue.queue))
+            return
+
+    def do_process(self, inp):
+        print(self.client.inProcessing)
  
     def default(self, inp):
         if inp == 'x' or inp == 'q':

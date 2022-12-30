@@ -3,7 +3,9 @@ import bitstring
 import re
 from time import time
 from queue import Queue
-from SerComClient import SerCom
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 class Route:
     destinationAdress = ""
@@ -30,6 +32,8 @@ class RouteRequest:
     originatorAdress = "000F"
     originatorSequence = 0
     format = "uint6=type, bool1=unknownSequenceNumber, bool1=flagTwo, bool1=flagThree, bool1=flagFour, bool1=flagFive, bool1=flagSix, uint6=hopCount, uint6=requestID, hex16=destinationAdress, int8=destinationSequence, hex16=originatorAdress, uint8=originatorSequence"
+
+    previousHop = ""
 
     def decode(self, msg: str):
         base64_bytes = msg.encode("ascii")
@@ -62,9 +66,10 @@ class RouteReply:
     destinationSequence = None
     originatorAdress = None
     hopCount = 0
-
     format = "uint6=type, uint18=lifetime, hex16=destinationAdress, int8=destinationSequence, hex16=originatorAdress, uint8=hopCount"
     
+    previousHop = ""
+
     def decode(self, msg: str):
         base64_bytes = msg.encode("ascii")
         message_bytes = base64.b64decode(base64_bytes)
@@ -85,12 +90,12 @@ class RouteReply:
 class RoutingTable:
     table = {}
 
-    def isUpdatedNeeded(self,currentEntry, newEntry) -> bool:
+    def isUpdatedNeeded(self,currentEntry: Route, newEntry: Route) -> bool:
         if not newEntry.isDestinationSequenceNumberValid:
             return True
-        if newEntry.destinationSeqNum-currentEntry.destinationSeqNum < 0:
+        if newEntry.destinationSequenceNumber-currentEntry.destinationSequenceNumber < 0:
             return True
-        if currentEntry.destinationSeqNum == newEntry.destinationSeqNum and newEntry.hopCount < currentEntry.hopCount:
+        if currentEntry.destinationSequenceNumber == newEntry.destinationSequenceNumber and newEntry.hopCount < currentEntry.hopCount:
             return True
 
     def hasEntryForDestination(self, destination: str) -> bool:
@@ -111,19 +116,19 @@ class RoutingTable:
             newRoute.active = True
             self.table.update({newRoute.destinationAdress : newRoute})
 
-    def updateEntryWithRREP(self, rrep: RouteReply, previousHopAdress: str):
+    def updateEntryWithRREP(self, rrep: RouteReply):
         newRoute = Route()
         newRoute.isDestinationSequenceNumberValid = True
         newRoute.destinationSequenceNumber = rrep.destinationSequence
         newRoute.destinationAdress = rrep.destinationAdress
         newRoute.lifetime = int(time()*1000)+rrep.lifetime
-        newRoute.nextHop = previousHopAdress
+        newRoute.nextHop = rrep.previousHop
         newRoute.active = True
         oldRoute = self.getEntry(rrep.destinationAdress)
         if oldRoute is None or self.isUpdatedNeeded(oldRoute,newRoute):
             self.table.update({newRoute.destinationAdress : newRoute})
 
-    def updateEntryWithRREQ(self, rreq: RouteRequest, previousHopAdress: str):
+    def updateEntryWithRREQ(self, rreq: RouteRequest):
         oldRoute = self.getEntry(rreq.originatorAdress)
         currentLifetime = 0
         currentDesitantionSecquenceNumber = 0
@@ -135,7 +140,7 @@ class RoutingTable:
         newRoute.destinationSequenceNumber = max(currentDesitantionSecquenceNumber,rreq.originatorSequence)
         newRoute.destinationAdress = rreq.originatorAdress
         newRoute.lifetime = max(currentLifetime, int(time()*1000)+ 2*AODV.NET_TRAVERSAL_TIME - 2*rreq.hopCount* AODV.NODE_TRAVERSAL_TIME)
-        newRoute.nextHop = previousHopAdress
+        newRoute.nextHop = rreq.previousHop
         newRoute.hopCount = rreq.hopCount
         newRoute.active = True
         if oldRoute is None or self.isUpdatedNeeded(oldRoute,newRoute):
@@ -145,16 +150,15 @@ class RoutingTable:
         self.table.update({route.destinationAdress : route})
 
 class AODV:
+    def __init__(self, outputQueue: Queue):
+        self.outputQueue = outputQueue
     routingTable = RoutingTable()
     reverseRoutingTable = RoutingTable()
-    lastAdress = None
     ownAdress = None
     sequenceNumber = 0
     requestID = 0
-    inputQueue = Queue(maxsize=0)
-    outputQueue = Queue(maxsize=0)
     rreqBuffer = []
-    serialPortClient = SerCom(inputQueue,outputQueue)
+    logger = logging.getLogger(__name__)
 
     ACTIVE_ROUTE_TIMEOUT = 3000
     NODE_TRAVERSAL_TIME = 40
@@ -164,22 +168,22 @@ class AODV:
     RREQ_RETRIES = 2
 
     def processRREQ(self, rreq: RouteRequest):
-        self.routingTable.updateEntryWithDestination(self.lastAdress)
+        self.routingTable.updateEntryWithDestination(rreq.previousHop)
         for entry in self.rreqBuffer:
             if (rreq.requestID,rreq.originatorAdress) == entry:
                 return
         rreq.hopCount += 1
-        self.reverseRoutingTable.updateEntryWithRREQ(rreq,self.lastAdress)
+        self.reverseRoutingTable.updateEntryWithRREQ(rreq)
         if rreq.destinationAdress is not self.ownAdress or not self.routingTable.hasEntryForDestination(rreq.destinationAdress):
             self.send("FFFF", rreq.encode())
             return
-        self.generateRREP(rreq,self.lastAdress)
+        self.generateRREP(rreq)
         
     
     def processRREP(self, rrep: RouteReply):
-        self.routingTable.updateEntryWithDestination(self.lastAdress)
+        self.routingTable.updateEntryWithDestination(rrep.previousHop)
         rrep.hopCount += 1
-        self.routingTable.updateEntryWithRREP(rrep,self.lastAdress)
+        self.routingTable.updateEntryWithRREP(rrep)
         reverseRoute = self.reverseRoutingTable.getEntry(rrep.originatorAdress)
         reverseRoute.lifetime = max(reverseRoute.lifetime,int(time()*1000)+AODV.ACTIVE_ROUTE_TIMEOUT)
         forwardRoute = self.routingTable.getEntry(rrep.destinationAdress)
@@ -191,7 +195,7 @@ class AODV:
     def send(destinationAdress: str, msg: str):
         ...
 
-    def generateRREP(self, rreq: RouteRequest, previousAdress: str):
+    def generateRREP(self, rreq: RouteRequest):
         rrep = RouteReply()
         if rreq.destinationAdress == self.ownAdress:
             rrep.hopCount = 0
@@ -204,7 +208,7 @@ class AODV:
             forwardRoute = self.routingTable.getEntry(rreq.destinationAdress)
             reverseRoute = self.reverseRoutingTable.getEntry(rreq.originatorAdress)
             rrep.destinationSequence = forwardRoute.destinationSequenceNumber
-            forwardRoute.precursers.append(self.lastAdress)
+            forwardRoute.precursers.append(rreq.previousHop)
             reverseRoute.precursers.append(forwardRoute.nextHop)
             rrep.hopCount = forwardRoute.hopCount
             rrep.lifetime = forwardRoute.lifetime - int(time()*1000)
@@ -227,21 +231,27 @@ class AODV:
         self.waitForResponse()
 
     def parse(self, msg:str):
-        msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg)
-        if msgMatch != None:
-            msg = msgMatch.group()
-            addrStr = msg.split(",")[1].strip()
-            self.lastAdress = addrStr
-        payload = msg.strip(",")[3]
-        package = self.decode(payload)
-
-    def decode(self, msg: str):
-        base64_bytes = msg.encode("ascii")
-        message_bytes = base64.b64decode(base64_bytes)
-        byteArray = bitstring.BitArray(bytes=message_bytes)
-        type = byteArray[0:6].uint
+        msgList = msg.split(",")
+        addrStr = msgList[1]
+        payload = msgList[3]
+        payloadMatch = re.match("^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",payload)# check for BASE64 String
+        if payloadMatch is None:
+            self.logger.error("Payload not BASE64 encoded: "+payload)
+            return
+        type = self.getPackageType(payload)
         if type == 1:
             package = RouteRequest()
-            print("Got RREQ")
+            self.logger.debug("Recieved RREQ from "+addrStr)
+        if type == 2:
+            package = RouteReply()
+            self.logger.debug("Recieved RREP from "+addrStr)
         package.decode(msg)
-        return package
+        package.previousHop = addrStr
+
+    def getPackageType(self, msg: str):
+        self.logger.debug(msg)
+        base64_bytes = msg
+        message_bytes = base64.b64decode(base64_bytes)
+        byteArray = bitstring.BitArray(bytes=message_bytes)
+        type = byteArray[:6].uint
+        return type

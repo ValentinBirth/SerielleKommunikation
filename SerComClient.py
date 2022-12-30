@@ -3,22 +3,25 @@ import serial.tools.list_ports, serial
 import time
 import re
 from queue import Queue
+from AODV import AODV
 import logging
 
 class SerCom():
-    def __init__(self, inputQueue: Queue, outputQueue: Queue):
-        self.inputQueue = inputQueue
-        self.outputQueue = outputQueue
     logging.basicConfig(level=logging.DEBUG)
 
     logger = logging.getLogger(__name__)
+    inputQueue = Queue(maxsize=0)
+    outputQueue = Queue(maxsize=0)
+    protocoll = AODV(outputQueue)
     inProcessing = False
     connected = False
 
-    def send(self, msg):
+    def send(self, destination: str, msg: str):
         msgLenght = len(msg)
-        cmd = "AT+SEND="+str(msgLenght)
-        self.write(cmd)
+        adressCMD = "AT+DEST="+destination
+        sendCMD = "AT+SEND="+str(msgLenght)
+        self.write(adressCMD)
+        self.write(sendCMD)
         self.write(msg)
         
 
@@ -33,10 +36,15 @@ class SerCom():
                     match = msgMatch.group()
                     if "SENDING" not in match: # not a cmd confirmation but not filtered by regex
                         self.inProcessing = False
+                    self.logger.debug(match)
+                msgMatch = re.match("ERR:[A-Z_]*", msg) # err confirmation
+                if msgMatch != None:
+                    self.inProcessing = False
+                    self.logger.error(msg)
                 msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg) #msg from other modules
                 if msgMatch != None:
-                    self.inputQueue.put(msg)
                     self.logger.debug(msg)
+                    self.protocoll.parse(msg)
             time.sleep(0.01)
 
     def writing(self):
