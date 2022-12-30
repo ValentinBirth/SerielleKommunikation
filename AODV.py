@@ -18,6 +18,7 @@ class Route:
     active = False
 
 class RouteRequest:
+    logger = logging.getLogger(__name__)
     type = 1      
     unknownSequenceNumber = False
     flagTwo = False
@@ -89,6 +90,7 @@ class RouteReply:
 
 class RoutingTable:
     table = {}
+    logger = logging.getLogger(__name__)
 
     def isUpdatedNeeded(self,currentEntry: Route, newEntry: Route) -> bool:
         if not newEntry.isDestinationSequenceNumberValid:
@@ -106,6 +108,7 @@ class RoutingTable:
 
     def updateEntryWithDestination(self,destinationAdress: str):
         if not self.hasEntryForDestination(destinationAdress):
+            self.logger.debug("Updating Route to "+destinationAdress)
             newRoute = Route()
             newRoute.isDestinationSequenceNumberValid = False
             newRoute.destinationSequenceNumber = 0
@@ -117,6 +120,7 @@ class RoutingTable:
             self.table.update({newRoute.destinationAdress : newRoute})
 
     def updateEntryWithRREP(self, rrep: RouteReply):
+        self.logger.debug("Updating Route to "+rrep.destinationAdress)
         newRoute = Route()
         newRoute.isDestinationSequenceNumberValid = True
         newRoute.destinationSequenceNumber = rrep.destinationSequence
@@ -129,6 +133,7 @@ class RoutingTable:
             self.table.update({newRoute.destinationAdress : newRoute})
 
     def updateEntryWithRREQ(self, rreq: RouteRequest):
+        self.logger.debug("Updating Route to "+rreq.originatorAdress)
         oldRoute = self.getEntry(rreq.originatorAdress)
         currentLifetime = 0
         currentDesitantionSecquenceNumber = 0
@@ -168,6 +173,7 @@ class AODV:
     RREQ_RETRIES = 2
 
     def processRREQ(self, rreq: RouteRequest):
+        self.logger.debug(rreq.__dict__)
         self.routingTable.updateEntryWithDestination(rreq.previousHop)
         for entry in self.rreqBuffer:
             if (rreq.requestID,rreq.originatorAdress) == entry:
@@ -192,7 +198,8 @@ class AODV:
         nextHopRoute.precursers.append(rrep.originatorAdress)
         self.send(reverseRoute.nextHop,rrep.encode())
 
-    def send(destinationAdress: str, msg: str):
+    def send(self, destinationAdress: str, payload: str):
+        self.logger.debug("Sending: "+payload+" to: "+destinationAdress)
         ...
 
     def generateRREP(self, rreq: RouteRequest):
@@ -234,6 +241,7 @@ class AODV:
         msgList = msg.split(",")
         addrStr = msgList[1]
         payload = msgList[3]
+        self.logger.debug("Parsed: "+payload+" from: "+addrStr)
         payloadMatch = re.match("^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",payload)# check for BASE64 String
         if payloadMatch is None:
             self.logger.error("Payload not BASE64 encoded: "+payload)
@@ -242,14 +250,18 @@ class AODV:
         if type == 1:
             package = RouteRequest()
             self.logger.debug("Recieved RREQ from "+addrStr)
+            package.decode(payload)
+            package.previousHop = addrStr
+            self.processRREQ(package)
         if type == 2:
             package = RouteReply()
             self.logger.debug("Recieved RREP from "+addrStr)
-        package.decode(msg)
-        package.previousHop = addrStr
+            package.decode(payload)
+            package.previousHop = addrStr
+            self.processRREP(package)
+        
 
     def getPackageType(self, msg: str):
-        self.logger.debug(msg)
         base64_bytes = msg
         message_bytes = base64.b64decode(base64_bytes)
         byteArray = bitstring.BitArray(bytes=message_bytes)
