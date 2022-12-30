@@ -24,14 +24,14 @@ class ATSIM:
     msgErrRFBusy = "ERR:RF_BUSY"
     msgErrPara = "ERR:PARA"
     msgErrSymbl = "ERR:SYMBLE"
-    msgOk = "AT+OK"
+    msgOk = "AT,OK"
     msgSending = "AT, Sending"
     msgSended = "AT, Send"
 
     def getVer(self):
         return "AT, "+ self.ver +", OK"
 
-    def rx(self):
+    def checkRX(self):
         self.rx = True
         return self.msgOk
     
@@ -109,6 +109,7 @@ class ATSIM:
             if paramInt < 1 | paramInt > 250:
                 return self.msgErrPara
             else:
+                write(self.msgOk)
                 input = ser.read(paramInt)
                 print("<"+str(datetime.now())+" sending >"+str(input))
                 ser.flushInput()
@@ -116,7 +117,7 @@ class ATSIM:
                 write(self.msgSending)
                 time.sleep(1)
                 write(self.msgSended)
-            return "LR, "+self.addr+", "+str(format(len(input), '02x'))+", "+input.decode("utf-8")
+            return "LR,"+self.addr+","+str(format(len(input), '02X'))+","+input.decode("utf-8")
 
     def parseInput(self,input):
         if input == "AT":
@@ -135,7 +136,7 @@ class ATSIM:
                 write(self.getVer())
                 return
             elif cmdStr == "RX":
-                write(self.rx())
+                write(self.checkRX())
                 return
             elif cmdStr == "SAVE":
                 # what does save do ?
