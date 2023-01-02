@@ -200,7 +200,12 @@ class AODV:
 
     def send(self, destinationAdress: str, payload: str):
         self.logger.debug("Sending: "+payload+" to: "+destinationAdress)
-        ...
+        msgLenght = len(payload)
+        adressCMD = "AT+DEST="+destinationAdress
+        sendCMD = "AT+SEND="+str(msgLenght)
+        self.outputQueue.put(adressCMD)
+        self.outputQueue.put(sendCMD)
+        self.outputQueue.put(payload)
 
     def generateRREP(self, rreq: RouteRequest):
         rrep = RouteReply()

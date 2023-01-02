@@ -16,15 +16,6 @@ class SerCom():
     inProcessing = False
     connected = False
 
-    def send(self, destination: str, msg: str):
-        msgLenght = len(msg)
-        adressCMD = "AT+DEST="+destination
-        sendCMD = "AT+SEND="+str(msgLenght)
-        self.write(adressCMD)
-        self.write(sendCMD)
-        self.write(msg)
-        
-
     def reading(self):
         """ If something is in the input buffer its put into the input queue """
         while self.connected:
@@ -37,6 +28,11 @@ class SerCom():
                     if "SENDING" not in match: # not a cmd confirmation but not filtered by regex
                         self.inProcessing = False
                     self.logger.debug(match)
+                msgMatch = re.match("AT *,*[0-9A-Z]{4}, *OK", msg) # adress of own module
+                if msgMatch != None:
+                    match = msgMatch.group()
+                    ownAdress = match.split(",")[1].strip()
+                    self.protocoll.ownAdress = ownAdress
                 msgMatch = re.match("ERR:[A-Z_]*", msg) # err confirmation
                 if msgMatch != None:
                     self.inProcessing = False
@@ -88,6 +84,7 @@ class SerCom():
         self.readThread = threading.Thread(target=self.reading, daemon=True).start()
         self.writeThread = threading.Thread(target=self.writing, daemon=True).start()
         self.write("AT+DEST=FFFF")
+        self.write("AT+ADDR?")
         self.write("AT+CFG=433920000,5,6,10,4,1,0,0,0,0,3000,8,4")
         self.write("AT+RX")
     
