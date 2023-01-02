@@ -92,12 +92,19 @@ class RoutingTable:
     table = {}
     logger = logging.getLogger(__name__)
 
+    def intToUint(self, int: int):
+        intbit = bitstring.BitArray(int=int, length = 8)
+        return intbit.uint
+
     def isUpdatedNeeded(self,currentEntry: Route, newEntry: Route) -> bool:
+        newDestSeqNum = self.intToUint(newEntry.destinationSequenceNumber)
+        currentDestSeqNum = self.intToUint(currentEntry.destinationSequenceNumber)
+
         if not newEntry.isDestinationSequenceNumberValid:
             return True
-        if newEntry.destinationSequenceNumber-currentEntry.destinationSequenceNumber < 0:
+        if newDestSeqNum-currentDestSeqNum < 0:
             return True
-        if currentEntry.destinationSequenceNumber == newEntry.destinationSequenceNumber and newEntry.hopCount < currentEntry.hopCount:
+        if currentDestSeqNum == newDestSeqNum and newEntry.hopCount < currentEntry.hopCount:
             return True
 
     def hasEntryForDestination(self, destination: str) -> bool:
