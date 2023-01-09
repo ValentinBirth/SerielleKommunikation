@@ -29,7 +29,12 @@ class MainPrompt(Cmd):
 
     def do_send(self, inp):
         """Sends Message through LORA Module"""
-        adress, msg = inp.split(" ")
+        args= inp.split(" ")
+        if len(args) != 2:
+            print("Wrong number of arguments, needs 2")
+            return
+        adress = args[0]
+        msg = args[1]
         self.client.send(adress,msg)
 
     def do_queue(self,inp):

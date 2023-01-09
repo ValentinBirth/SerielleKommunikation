@@ -1,9 +1,39 @@
 import base64
 import bitstring
 import re
-from time import time
+from time import time, sleep
 from queue import Queue
 import logging
+
+# TODO
+# apply checkForResponse to User Data Buffer
+# implement sending Userdata
+# implement rreq buffer with timeout 
+# implement startup/reboot sequence
+# hasEntryForDestination also returns true on invalid routes, check if thats ok
+# Rollover on Hopcount and Sequence Number not working
+# sequence number comparison not properly
+# increment rollover via modulo
+# comparison rollover via bitshfiting to 32 bit (python does rollover)
+# Userdata encoding not working
+"""
+Traceback (most recent call last):
+  File "C:\Schule\Studium\5.Semester\TMS\Code\SerielleKommunikation\Communicator.py", line 60, in <module>
+    MainPrompt().cmdloop()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.10_3.10.2544.0_x64__qbz5n2kfra8p0\lib\cmd.py", line 138, in cmdloop
+    stop = self.onecmd(line)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.10_3.10.2544.0_x64__qbz5n2kfra8p0\lib\cmd.py", line 217, in onecmd
+    return func(arg)
+  File "C:\Schule\Studium\5.Semester\TMS\Code\SerielleKommunikation\Communicator.py", line 38, in do_send
+    self.client.send(adress,msg)
+  File "C:\Schule\Studium\5.Semester\TMS\Code\SerielleKommunikation\SerComClient.py", line 20, in send
+    self.protocoll.sendUserData(destinaion,msg)
+  File "C:\Schule\Studium\5.Semester\TMS\Code\SerielleKommunikation\AODV.py", line 268, in sendUserData
+    self.send(self.routingTable.getEntry(destination).nextHop,userData.encode())
+  File "C:\Schule\Studium\5.Semester\TMS\Code\SerielleKommunikation\AODV.py", line 52, in encode
+    udbin = bitstring.BitArray(bytes=self.userData.encode("utf-8"))
+AttributeError: 'bytes' object has no attribute 'encode'. Did you mean: 'decode'?
+"""
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -17,27 +47,56 @@ class Route:
     lifetime = 0
     active = False
 
-class RouteRequest:
-    logger = logging.getLogger(__name__)
-    type = 1      
-    unknownSequenceNumber = False
-    flagTwo = False
-    flagThree = False
-    flagFour = False
-    flagFive = False
-    flagSix = False
-    hopCount = 0
-    requestID = 0
-    destinationAdress = "000F"
-    destinationSequence = 0
-    originatorAdress = "000F"
-    originatorSequence = 0
-    format = "uint6=type, bool1=unknownSequenceNumber, bool1=flagTwo, bool1=flagThree, bool1=flagFour, bool1=flagFive, bool1=flagSix, uint6=hopCount, uint6=requestID, hex16=destinationAdress, int8=destinationSequence, hex16=originatorAdress, uint8=originatorSequence"
+class UserData:
+    def __init__(self) -> None:
+        self.logger = logging.getLogger(__name__)
+        self.type = 0
+        self.destinationAdress = ""
+        self.userData = ""
+        self.numRetries = 0
 
-    previousHop = ""
+        self.format = "uint6=type, hex16=destinationAdress"
+        self.unpackformat = self.format + ", bits=userData"
 
     def decode(self, msg: str):
-        base64_bytes = msg.encode("ascii")
+        base64_bytes = msg.encode("utf-8")
+        message_bytes = base64.b64decode(base64_bytes)
+        byteArray = bitstring.BitArray(bytes=message_bytes)
+        arglist = byteArray.unpack(self.unpackformat)
+        print(arglist)
+        self.type = arglist[0]
+        self.destinationAdress = arglist[1]
+        self.userData = arglist[2].tobytes().decode("utf-8")
+    
+    def encode(self):
+        byteArray = bitstring.pack(self.format, **self.__dict__)
+        udbin = bitstring.BitArray(bytes=self.userData.encode("utf-8"))
+        byteArray.append(udbin)
+        base64string = base64.b64encode(byteArray.tobytes())
+        return base64string.decode("utf-8")
+
+class RouteRequest:
+    def __init__(self) -> None:
+        self.type = 1      
+        self.unknownSequenceNumber = False
+        self.flagTwo = False
+        self.flagThree = False
+        self.flagFour = False
+        self.flagFive = False
+        self.flagSix = False
+        self.hopCount = 0
+        self.requestID = 0
+        self.destinationAdress = "000F"
+        self.destinationSequence = 0
+        self.originatorAdress = "000F"
+        self.originatorSequence = 0
+        self.format = "uint6=type, bool1=unknownSequenceNumber, bool1=flagTwo, bool1=flagThree, bool1=flagFour, bool1=flagFive, bool1=flagSix, uint6=hopCount, uint6=requestID, hex16=destinationAdress, uint8=destinationSequence, hex16=originatorAdress, uint8=originatorSequence"
+
+        self.logger = logging.getLogger(__name__)
+        self.previousHop = ""
+
+    def decode(self, msg: str):
+        base64_bytes = msg.encode("utf-8")
         message_bytes = base64.b64decode(base64_bytes)
         byteArray = bitstring.BitArray(bytes=message_bytes)
         arglist = byteArray.unpack(self.format)
@@ -58,21 +117,22 @@ class RouteRequest:
     def encode(self):
         byteArray = bitstring.pack(self.format, **self.__dict__)
         base64string = base64.b64encode(byteArray.tobytes())
-        return base64string.decode("ascii")
+        return base64string.decode("utf-8")
 
 class RouteReply:
-    type = 2
-    lifetime = None
-    destinationAdress = None
-    destinationSequence = None
-    originatorAdress = None
-    hopCount = 0
-    format = "uint6=type, uint18=lifetime, hex16=destinationAdress, int8=destinationSequence, hex16=originatorAdress, uint8=hopCount"
-    
-    previousHop = ""
+    def __init__(self) -> None:
+        self.type = 2
+        self.lifetime = None
+        self.destinationAdress = None
+        self.destinationSequence = None
+        self.originatorAdress = None
+        self.hopCount = 0
+        self.format = "uint6=type, uint18=lifetime, hex16=destinationAdress, uint8=destinationSequence, hex16=originatorAdress, uint8=hopCount"
+        
+        self.previousHop = ""
 
     def decode(self, msg: str):
-        base64_bytes = msg.encode("ascii")
+        base64_bytes = msg.encode("utf-8")
         message_bytes = base64.b64decode(base64_bytes)
         byteArray = bitstring.BitArray(bytes=message_bytes)
         arglist = byteArray.unpack(self.format)
@@ -84,21 +144,22 @@ class RouteReply:
         self.hopCount = arglist[5]
 
     def encode(self):
+        print(self.__dict__)
         byteArray = bitstring.pack(self.format, **self.__dict__)
         base64string = base64.b64encode(byteArray.tobytes())
-        return base64string.decode("ascii")
+        return base64string.decode("utf-8")
 
 class RoutingTable:
     table = {}
     logger = logging.getLogger(__name__)
 
-    def intToUint(self, int: int):
-        intbit = bitstring.BitArray(int=int, length = 8)
-        return intbit.uint
+    def uintToInt(self, int: int):
+        intbit = bitstring.BitArray(uint=int, length = 8)
+        return intbit.int
 
     def isUpdatedNeeded(self,currentEntry: Route, newEntry: Route) -> bool:
-        newDestSeqNum = self.intToUint(newEntry.destinationSequenceNumber)
-        currentDestSeqNum = self.intToUint(currentEntry.destinationSequenceNumber)
+        newDestSeqNum = self.uintToInt(newEntry.destinationSequenceNumber)
+        currentDestSeqNum = self.uintToInt(currentEntry.destinationSequenceNumber)
 
         if not newEntry.isDestinationSequenceNumberValid:
             return True
@@ -170,14 +231,15 @@ class AODV:
     sequenceNumber = 0
     requestID = 0
     rreqBuffer = []
+    userDataBuffer = []
     logger = logging.getLogger(__name__)
 
-    ACTIVE_ROUTE_TIMEOUT = 3000
-    NODE_TRAVERSAL_TIME = 40
+    ACTIVE_ROUTE_TIMEOUT = int(3000)
+    NODE_TRAVERSAL_TIME = int(40)
     MY_ROUTE_TIMEOUT = 2 * ACTIVE_ROUTE_TIMEOUT
     NET_TRAVERSAL_TIME =2 * NODE_TRAVERSAL_TIME # * NET_DIAMETER
     PATH_DISCOVERY_TIME = 2 * NET_TRAVERSAL_TIME
-    RREQ_RETRIES = 2
+    RREQ_RETRIES = int(2)
 
     def processRREQ(self, rreq: RouteRequest):
         self.logger.debug(rreq.__dict__)
@@ -187,9 +249,10 @@ class AODV:
                 return
         rreq.hopCount += 1
         self.reverseRoutingTable.updateEntryWithRREQ(rreq)
-        if rreq.destinationAdress is not self.ownAdress or not self.routingTable.hasEntryForDestination(rreq.destinationAdress):
-            self.send("FFFF", rreq.encode())
-            return
+        if rreq.destinationAdress is not self.ownAdress:
+            if self.routingTable.hasEntryForDestination(rreq.destinationAdress):
+                self.send("FFFF", rreq.encode())
+                return
         self.generateRREP(rreq)
         
     
@@ -197,13 +260,17 @@ class AODV:
         self.routingTable.updateEntryWithDestination(rrep.previousHop)
         rrep.hopCount += 1
         self.routingTable.updateEntryWithRREP(rrep)
-        reverseRoute = self.reverseRoutingTable.getEntry(rrep.originatorAdress)
-        reverseRoute.lifetime = max(reverseRoute.lifetime,int(time()*1000)+AODV.ACTIVE_ROUTE_TIMEOUT)
-        forwardRoute = self.routingTable.getEntry(rrep.destinationAdress)
-        forwardRoute.precursers.append(reverseRoute.nextHop)
-        nextHopRoute = self.routingTable.getEntry(reverseRoute.nextHop)
-        nextHopRoute.precursers.append(rrep.originatorAdress)
-        self.send(reverseRoute.nextHop,rrep.encode())
+        try:
+            reverseRoute = self.reverseRoutingTable.getEntry(rrep.originatorAdress)
+            reverseRoute.lifetime = max(reverseRoute.lifetime,int(time()*1000)+AODV.ACTIVE_ROUTE_TIMEOUT)
+            forwardRoute = self.routingTable.getEntry(rrep.destinationAdress)
+            forwardRoute.precursers.append(reverseRoute.nextHop)
+            nextHopRoute = self.routingTable.getEntry(reverseRoute.nextHop)
+            nextHopRoute.precursers.append(rrep.originatorAdress)
+            if rrep.originatorAdress != self.ownAdress:
+                self.send(reverseRoute.nextHop,rrep.encode())
+        except Exception as err:
+            self.logger.error(err)
 
     def send(self, destinationAdress: str, payload: str):
         self.logger.debug("Sending: "+payload+" to: "+destinationAdress)
@@ -214,14 +281,29 @@ class AODV:
         self.outputQueue.put(sendCMD)
         self.outputQueue.put(payload)
 
+    def sendUserData(self, destination: str, data: str):
+        userData = UserData()
+        userData.destinationAdress = destination
+        userData.userData = data.encode("utf-8")
+        if self.routingTable.hasEntryForDestination(destination):
+            self.send(self.routingTable.getEntry(destination).nextHop,userData.encode())
+            return
+        self.generateRREQ(userData.destinationAdress,True,0)
+        self.userDataBuffer.append(userData)
+            
+
     def generateRREP(self, rreq: RouteRequest):
         rrep = RouteReply()
         if rreq.destinationAdress == self.ownAdress:
-            rrep.hopCount = 0
+            rrep.destinationAdress = self.ownAdress
+            rrep.originatorAdress = self.ownAdress
+            rrep.destinationSequence = self.sequenceNumber
+            rrep.hopCount = int(0)
             rrep.lifetime = AODV.MY_ROUTE_TIMEOUT
             if self.sequenceNumber+1 == rreq.destinationSequence:
                 self.sequenceNumber += 1
             rrep.destinationSequence = self.sequenceNumber
+            self.send(rreq.originatorAdress, rrep.encode())
             return
         if self.routingTable.hasEntryForDestination(rreq.destinationAdress):
             forwardRoute = self.routingTable.getEntry(rreq.destinationAdress)
@@ -230,13 +312,23 @@ class AODV:
             forwardRoute.precursers.append(rreq.previousHop)
             reverseRoute.precursers.append(forwardRoute.nextHop)
             rrep.hopCount = forwardRoute.hopCount
+            rrep.destinationAdress = rreq.destinationAdress
+            rrep.originatorAdress = self.ownAdress
+            rrep.destinationSequence = self.sequenceNumber
             rrep.lifetime = forwardRoute.lifetime - int(time()*1000)
-        self.send(rreq.originatorAdress, rrep.encode())
+            self.send(rreq.originatorAdress, rrep.encode())
 
-    def waitForResponse(self):
-        ...
+    def checkForResponse(self, userData: UserData):
+        waitingTime = self.NET_TRAVERSAL_TIME
+        while userData.numRetries <= self.RREQ_RETRIES:
+            if self.routingTable.hasEntryForDestination(userData.destinationAdress):
+                return
+            sleep(waitingTime)
+            userData.numRetries +=1
+            self.generateRREQ(userData.destinationAdress,True,0)
+            waitingTime = 2^userData.numRetries*self.NET_TRAVERSAL_TIME
 
-    def generateRREQ(self, isSequenceNumberUnknown: bool, destinationSequenceNumber: str):
+    def generateRREQ(self, destinationAdress: str,isSequenceNumberUnknown: bool, destinationSequenceNumber: str):
         rreq = RouteRequest()
         if isSequenceNumberUnknown:
             rreq.unknownSequenceNumber = True
@@ -245,9 +337,10 @@ class AODV:
         self.requestID += 1
         rreq.requestID = self.requestID
         rreq.hopCount = 0
+        rreq.destinationAdress = destinationAdress
+        rreq.originatorAdress = self.ownAdress
         self.rreqBuffer.append((rreq.requestID,rreq.originatorAdress))
         self.send("FFFF", rreq.encode())
-        self.waitForResponse()
 
     def parse(self, msg:str):
         msgList = msg.split(",")

@@ -16,6 +16,9 @@ class SerCom():
     inProcessing = False
     connected = False
 
+    def send(self, destinaion: str, msg: str):
+        self.protocoll.sendUserData(destinaion,msg)
+
     def reading(self):
         """ If something is in the input buffer its put into the input queue """
         while self.connected:
@@ -23,22 +26,22 @@ class SerCom():
                 data = self.ser.readline()
                 msg = data.decode("ascii").strip()
                 msgMatch = re.match("AT,(OK|[0-9a-zA-Z.-]*(,OK)*)", msg) #cmd confirmation
-                if msgMatch != None:
+                if msgMatch is not None:
                     match = msgMatch.group()
                     if "SENDING" not in match: # not a cmd confirmation but not filtered by regex
                         self.inProcessing = False
                     self.logger.debug(match)
                 msgMatch = re.match("AT *,*[0-9A-Z]{4}, *OK", msg) # adress of own module
-                if msgMatch != None:
+                if msgMatch is not None:
                     match = msgMatch.group()
                     ownAdress = match.split(",")[1].strip()
                     self.protocoll.ownAdress = ownAdress
                 msgMatch = re.match("ERR:[A-Z_]*", msg) # err confirmation
-                if msgMatch != None:
+                if msgMatch is not None:
                     self.inProcessing = False
                     self.logger.error(msg)
                 msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg) #msg from other modules
-                if msgMatch != None:
+                if msgMatch is not None:
                     self.logger.debug(msg)
                     self.protocoll.parse(msg)
             time.sleep(0.01)
