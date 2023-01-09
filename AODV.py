@@ -10,7 +10,6 @@ import logging
 # implement sending Userdata
 # implement rreq buffer with timeout 
 # implement startup/reboot sequence
-# hasEntryForDestination also returns true on invalid routes, check if thats ok
 # Userdata encoding not working
 """
 Traceback (most recent call last):
@@ -171,13 +170,18 @@ class RoutingTable:
 
         if not newEntry.isDestinationSequenceNumberValid:
             return True
+        if not newEntry.active:
+            return True
         if differenceWithOverflow < 0:
             return True
         if currentDestSeqNum == newDestSeqNum and newEntry.hopCount < currentEntry.hopCount:
             return True
 
     def hasEntryForDestination(self, destination: str) -> bool:
-        return self.table.get(destination) != None
+        return self.table.get(destination) is not None
+
+    def hasValidEntryForDestination(self, destination: str) -> bool:
+        return self.table.get(destination) is not None and self.table.get(destination).active
 
     def getEntry(self, destination: str) -> Route:
         return self.table.get(destination)
@@ -192,7 +196,7 @@ class RoutingTable:
             newRoute.lifetime = int(time()*1000)+AODV.ACTIVE_ROUTE_TIMEOUT 
             newRoute.hopCount = 1
             newRoute.nextHop = destinationAdress
-            newRoute.active = True
+            newRoute.active = False
             self.table.update({newRoute.destinationAdress : newRoute})
 
     def updateEntryWithRREP(self, rrep: RouteReply):
@@ -270,7 +274,7 @@ class AODV:
         rreq.incrementHopCount()
         self.reverseRoutingTable.updateEntryWithRREQ(rreq)
         if rreq.destinationAdress is not self.ownAdress:
-            if self.routingTable.hasEntryForDestination(rreq.destinationAdress):
+            if self.routingTable.hasValidEntryForDestination(rreq.destinationAdress):
                 self.send("FFFF", rreq.encode())
                 return
         self.generateRREP(rreq)
@@ -305,7 +309,7 @@ class AODV:
         userData = UserData()
         userData.destinationAdress = destination
         userData.userData = data.encode("utf-8")
-        if self.routingTable.hasEntryForDestination(destination):
+        if self.routingTable.hasValidEntryForDestination(destination):
             self.send(self.routingTable.getEntry(destination).nextHop,userData.encode())
             return
         self.generateRREQ(userData.destinationAdress,True,0)
@@ -326,7 +330,7 @@ class AODV:
             rrep.destinationSequence = self.sequenceNumber
             self.send(rreq.originatorAdress, rrep.encode())
             return
-        if self.routingTable.hasEntryForDestination(rreq.destinationAdress):
+        if self.routingTable.hasValidEntryForDestination(rreq.destinationAdress):
             forwardRoute = self.routingTable.getEntry(rreq.destinationAdress)
             reverseRoute = self.reverseRoutingTable.getEntry(rreq.originatorAdress)
             rrep.destinationSequence = forwardRoute.destinationSequenceNumber
@@ -342,7 +346,7 @@ class AODV:
     def checkForResponse(self, userData: UserData):
         waitingTime = self.NET_TRAVERSAL_TIME
         while userData.numRetries <= self.RREQ_RETRIES:
-            if self.routingTable.hasEntryForDestination(userData.destinationAdress):
+            if self.routingTable.hasValidEntryForDestination(userData.destinationAdress):
                 return
             sleep(waitingTime)
             userData.numRetries +=1
