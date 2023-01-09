@@ -11,10 +11,6 @@ import logging
 # implement rreq buffer with timeout 
 # implement startup/reboot sequence
 # hasEntryForDestination also returns true on invalid routes, check if thats ok
-# Rollover on Hopcount and Sequence Number not working
-# sequence number comparison not properly
-# increment rollover via modulo
-# comparison rollover via bitshfiting to 32 bit (python does rollover)
 # Userdata encoding not working
 """
 Traceback (most recent call last):
@@ -119,6 +115,10 @@ class RouteRequest:
         base64string = base64.b64encode(byteArray.tobytes())
         return base64string.decode("utf-8")
 
+    def incrementHopCount(self):
+        self.hopCount +=1
+        self.hopCount = self.hopCount % 63
+
 class RouteReply:
     def __init__(self) -> None:
         self.type = 2
@@ -148,6 +148,10 @@ class RouteReply:
         byteArray = bitstring.pack(self.format, **self.__dict__)
         base64string = base64.b64encode(byteArray.tobytes())
         return base64string.decode("utf-8")
+    
+    def incrementHopCount(self):
+        self.hopCount +=1
+        self.hopCount = self.hopCount % 63
 
 class RoutingTable:
     table = {}
@@ -161,9 +165,13 @@ class RoutingTable:
         newDestSeqNum = self.uintToInt(newEntry.destinationSequenceNumber)
         currentDestSeqNum = self.uintToInt(currentEntry.destinationSequenceNumber)
 
+        differenceWithOverflow = newDestSeqNum-currentDestSeqNum
+        if differenceWithOverflow < 127:
+            differenceWithOverflow = differenceWithOverflow % 127 - 127
+
         if not newEntry.isDestinationSequenceNumberValid:
             return True
-        if newDestSeqNum-currentDestSeqNum < 0:
+        if differenceWithOverflow < 0:
             return True
         if currentDestSeqNum == newDestSeqNum and newEntry.hopCount < currentEntry.hopCount:
             return True
@@ -225,21 +233,33 @@ class RoutingTable:
 class AODV:
     def __init__(self, outputQueue: Queue):
         self.outputQueue = outputQueue
-    routingTable = RoutingTable()
-    reverseRoutingTable = RoutingTable()
-    ownAdress = None
-    sequenceNumber = 0
-    requestID = 0
-    rreqBuffer = []
-    userDataBuffer = []
-    logger = logging.getLogger(__name__)
+        self.routingTable = RoutingTable()
+        self.reverseRoutingTable = RoutingTable()
+        self.ownAdress = None
+        self.sequenceNumber = 0
+        self.requestID = 0
+        self.rreqBuffer = []
+        self.userDataBuffer = []
+        self.logger = logging.getLogger(__name__)
 
-    ACTIVE_ROUTE_TIMEOUT = int(3000)
-    NODE_TRAVERSAL_TIME = int(40)
-    MY_ROUTE_TIMEOUT = 2 * ACTIVE_ROUTE_TIMEOUT
-    NET_TRAVERSAL_TIME =2 * NODE_TRAVERSAL_TIME # * NET_DIAMETER
-    PATH_DISCOVERY_TIME = 2 * NET_TRAVERSAL_TIME
-    RREQ_RETRIES = int(2)
+        self.ACTIVE_ROUTE_TIMEOUT = int(3000)
+        self.NODE_TRAVERSAL_TIME = int(40)
+        self.MY_ROUTE_TIMEOUT = 2 * self.ACTIVE_ROUTE_TIMEOUT
+        self.NET_TRAVERSAL_TIME =2 * self.NODE_TRAVERSAL_TIME # * NET_DIAMETER
+        self.PATH_DISCOVERY_TIME = 2 * self.NET_TRAVERSAL_TIME
+        self.RREQ_RETRIES = int(2)
+
+    def incrementSequenceNumber(self):
+        self.sequenceNumber += 1
+        self.sequenceNumber = self.sequenceNumber % 255
+
+    def decrementSequenceNumber(self):
+        self.sequenceNumber -= 1
+        self.sequenceNumber = self.sequenceNumber % 255
+
+    def incrementRequestID(self):
+        self.requestID += 1
+        self.requestID = self.requestID % 63
 
     def processRREQ(self, rreq: RouteRequest):
         self.logger.debug(rreq.__dict__)
@@ -247,7 +267,7 @@ class AODV:
         for entry in self.rreqBuffer:
             if (rreq.requestID,rreq.originatorAdress) == entry:
                 return
-        rreq.hopCount += 1
+        rreq.incrementHopCount()
         self.reverseRoutingTable.updateEntryWithRREQ(rreq)
         if rreq.destinationAdress is not self.ownAdress:
             if self.routingTable.hasEntryForDestination(rreq.destinationAdress):
@@ -258,7 +278,7 @@ class AODV:
     
     def processRREP(self, rrep: RouteReply):
         self.routingTable.updateEntryWithDestination(rrep.previousHop)
-        rrep.hopCount += 1
+        rrep.incrementHopCount()
         self.routingTable.updateEntryWithRREP(rrep)
         try:
             reverseRoute = self.reverseRoutingTable.getEntry(rrep.originatorAdress)
@@ -300,8 +320,9 @@ class AODV:
             rrep.destinationSequence = self.sequenceNumber
             rrep.hopCount = int(0)
             rrep.lifetime = AODV.MY_ROUTE_TIMEOUT
-            if self.sequenceNumber+1 == rreq.destinationSequence:
-                self.sequenceNumber += 1
+            self.incrementSequenceNumber()
+            if not self.sequenceNumber == rreq.destinationSequence:
+                self.decrementSequenceNumber()
             rrep.destinationSequence = self.sequenceNumber
             self.send(rreq.originatorAdress, rrep.encode())
             return
@@ -332,9 +353,9 @@ class AODV:
         rreq = RouteRequest()
         if isSequenceNumberUnknown:
             rreq.unknownSequenceNumber = True
-        self.sequenceNumber += 1
+        self.incrementSequenceNumber()
         rreq.originatorSequence = self.sequenceNumber
-        self.requestID += 1
+        self.incrementRequestID()
         rreq.requestID = self.requestID
         rreq.hopCount = 0
         rreq.destinationAdress = destinationAdress
