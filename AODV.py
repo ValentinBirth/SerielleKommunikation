@@ -4,9 +4,9 @@ import re
 from time import time, sleep
 from queue import Queue
 import logging
+import threading
 
 # TODO
-# apply checkForResponse to User Data Buffer
 # implement sending Userdata
 # implement rreq buffer with timeout 
 # implement startup/reboot sequence
@@ -235,24 +235,6 @@ class RoutingTable:
         self.table.update({route.destinationAdress : route})
 
 class AODV:
-    def __init__(self, outputQueue: Queue):
-        self.outputQueue = outputQueue
-        self.routingTable = RoutingTable()
-        self.reverseRoutingTable = RoutingTable()
-        self.ownAdress = None
-        self.sequenceNumber = 0
-        self.requestID = 0
-        self.rreqBuffer = []
-        self.userDataBuffer = []
-        self.logger = logging.getLogger(__name__)
-
-        self.ACTIVE_ROUTE_TIMEOUT = int(3000)
-        self.NODE_TRAVERSAL_TIME = int(40)
-        self.MY_ROUTE_TIMEOUT = 2 * self.ACTIVE_ROUTE_TIMEOUT
-        self.NET_TRAVERSAL_TIME =2 * self.NODE_TRAVERSAL_TIME # * NET_DIAMETER
-        self.PATH_DISCOVERY_TIME = 2 * self.NET_TRAVERSAL_TIME
-        self.RREQ_RETRIES = int(2)
-
     def incrementSequenceNumber(self):
         self.sequenceNumber += 1
         self.sequenceNumber = self.sequenceNumber % 255
@@ -317,6 +299,7 @@ class AODV:
             
 
     def generateRREP(self, rreq: RouteRequest):
+        self.logger.debug("Generate RREP for "+rreq.destinationAdress)
         rrep = RouteReply()
         if rreq.destinationAdress == self.ownAdress:
             rrep.destinationAdress = self.ownAdress
@@ -343,20 +326,26 @@ class AODV:
             rrep.lifetime = forwardRoute.lifetime - int(time()*1000)
             self.send(rreq.originatorAdress, rrep.encode())
 
-    def checkForResponse(self, userData: UserData):
-        waitingTime = self.NET_TRAVERSAL_TIME
-        while userData.numRetries <= self.RREQ_RETRIES:
-            if self.routingTable.hasValidEntryForDestination(userData.destinationAdress):
-                return
-            sleep(waitingTime)
-            userData.numRetries +=1
-            self.generateRREQ(userData.destinationAdress,True,0)
-            waitingTime = 2^userData.numRetries*self.NET_TRAVERSAL_TIME
+    def checkForResponse(self):
+        while True:
+            if len(self.userDataBuffer) > 0:
+                for userData in self.userDataBuffer:
+                    waitingTime = self.NET_TRAVERSAL_TIME
+                    while userData.numRetries <= self.RREQ_RETRIES:
+                        if self.routingTable.hasValidEntryForDestination(userData.destinationAdress):
+                            self.send(self.routingTable.getEntry(userData.destinationAdress).nextHop,userData.encode())
+                            continue
+                        sleep(waitingTime)
+                        userData.numRetries +=1
+                        self.generateRREQ(userData.destinationAdress,True,0)
+                        waitingTime = 2^userData.numRetries*self.NET_TRAVERSAL_TIME
 
     def generateRREQ(self, destinationAdress: str,isSequenceNumberUnknown: bool, destinationSequenceNumber: str):
+        self.logger.debug("Generating RREQ to "+destinationAdress)
         rreq = RouteRequest()
         if isSequenceNumberUnknown:
             rreq.unknownSequenceNumber = True
+        rreq.destinationSequence = destinationSequenceNumber
         self.incrementSequenceNumber()
         rreq.originatorSequence = self.sequenceNumber
         self.incrementRequestID()
@@ -397,3 +386,22 @@ class AODV:
         byteArray = bitstring.BitArray(bytes=message_bytes)
         type = byteArray[:6].uint
         return type
+
+    def __init__(self, outputQueue: Queue):
+        self.outputQueue = outputQueue
+        self.routingTable = RoutingTable()
+        self.reverseRoutingTable = RoutingTable()
+        self.ownAdress = None
+        self.sequenceNumber = 0
+        self.requestID = 0
+        self.rreqBuffer = []
+        self.userDataBuffer = []
+        self.logger = logging.getLogger(__name__)
+        self.readThread = threading.Thread(target=self.checkForResponse, daemon=True).start()
+
+        self.ACTIVE_ROUTE_TIMEOUT = int(3000)
+        self.NODE_TRAVERSAL_TIME = int(40)
+        self.MY_ROUTE_TIMEOUT = 2 * self.ACTIVE_ROUTE_TIMEOUT
+        self.NET_TRAVERSAL_TIME =2 * self.NODE_TRAVERSAL_TIME # * NET_DIAMETER
+        self.PATH_DISCOVERY_TIME = 2 * self.NET_TRAVERSAL_TIME
+        self.RREQ_RETRIES = int(2)
