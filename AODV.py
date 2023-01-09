@@ -7,7 +7,6 @@ import logging
 import threading
 
 # TODO
-# implement rreq buffer with timeout 
 # implement startup/reboot sequence
 # Userdata encoding not working
 """
@@ -161,6 +160,7 @@ class RoutingTable:
                     timestampMS = int(time()*1000)
                     if routeLifetime - timestampMS < 0:
                         self.table.pop(destination)
+            sleep(0.01)
 
     def __init__(self) -> None:
         self.table = {}
@@ -342,6 +342,9 @@ class AODV:
             if len(self.userDataBuffer) > 0:
                 for userData in self.userDataBuffer:
                     waitingTime = self.NET_TRAVERSAL_TIME
+                    if userData.numRetries > self.RREQ_RETRIES:
+                        self.userDataBuffer.remove(userData)
+                        self.logger.error("Destimation "+userData.destinationAdress +" unreachable")
                     while userData.numRetries <= self.RREQ_RETRIES:
                         if self.routingTable.hasValidEntryForDestination(userData.destinationAdress):
                             self.send(self.routingTable.getEntry(userData.destinationAdress).nextHop,userData.encode())
@@ -350,6 +353,7 @@ class AODV:
                         userData.numRetries +=1
                         self.generateRREQ(userData.destinationAdress,True,0)
                         waitingTime = 2^userData.numRetries*self.NET_TRAVERSAL_TIME
+            sleep(0.01)
 
     def generateRREQ(self, destinationAdress: str,isSequenceNumberUnknown: bool, destinationSequenceNumber: str):
         self.logger.debug("Generating RREQ to "+destinationAdress)
@@ -364,7 +368,7 @@ class AODV:
         rreq.hopCount = 0
         rreq.destinationAdress = destinationAdress
         rreq.originatorAdress = self.ownAdress
-        self.rreqBuffer.append((rreq.requestID,rreq.originatorAdress))
+        self.rreqBuffer[(rreq.requestID,rreq.originatorAdress)] = int(time()*1000)
         self.send("FFFF", rreq.encode())
 
     def parse(self, msg:str):
@@ -398,6 +402,17 @@ class AODV:
         type = byteArray[:6].uint
         return type
 
+    def checkRREQBuffer(self):
+        while True:
+            if len(self.rreqBuffer) > 0:
+                for entry in self.rreqBuffer:
+                    entryTimeStamp = self.rreqBuffer[entry]
+                    entryTimeStamp += self.PATH_DISCOVERY_TIME
+                    timestampMS = int(time()*1000)
+                    if entryTimeStamp - timestampMS < 0:
+                        self.rreqBuffer.pop(entry)
+            sleep(0.01)
+
     def __init__(self, outputQueue: Queue):
         self.outputQueue = outputQueue
         self.routingTable = RoutingTable()
@@ -405,10 +420,11 @@ class AODV:
         self.ownAdress = None
         self.sequenceNumber = 0
         self.requestID = 0
-        self.rreqBuffer = []
+        self.rreqBuffer = {}
         self.userDataBuffer = []
         self.logger = logging.getLogger(__name__)
         self.readThread = threading.Thread(target=self.checkForResponse, daemon=True).start()
+        self.readThread = threading.Thread(target=self.checkRREQBuffer, daemon=True).start()
 
         self.ACTIVE_ROUTE_TIMEOUT = int(3000)
         self.NODE_TRAVERSAL_TIME = int(40)
