@@ -7,7 +7,6 @@ import logging
 import threading
 
 # TODO
-# implement sending Userdata
 # implement rreq buffer with timeout 
 # implement startup/reboot sequence
 # Userdata encoding not working
@@ -153,8 +152,20 @@ class RouteReply:
         self.hopCount = self.hopCount % 63
 
 class RoutingTable:
-    table = {}
-    logger = logging.getLogger(__name__)
+    def checkForRouteLifetime(self):
+        while True:
+            if len(self.table) > 0:
+                for destination in self.table:
+                    route = self.table[destination]
+                    routeLifetime = route.lifetime
+                    timestampMS = int(time()*1000)
+                    if routeLifetime - timestampMS < 0:
+                        self.table.pop(destination)
+
+    def __init__(self) -> None:
+        self.table = {}
+        self.logger = logging.getLogger(__name__)
+        self.readThread = threading.Thread(target=self.checkForRouteLifetime, daemon=True).start()
 
     def uintToInt(self, int: int):
         intbit = bitstring.BitArray(uint=int, length = 8)
