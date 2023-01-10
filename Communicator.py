@@ -1,5 +1,6 @@
 from cmd import Cmd
 from SerComClient import SerCom
+from tabulate import tabulate
 import logging
  
 class MainPrompt(Cmd):
@@ -44,6 +45,15 @@ class MainPrompt(Cmd):
             return
         if inp == "output":
             print(list(self.client.outputQueue.queue))
+            return
+    
+    def do_table(self, inp):
+        """Prints Routingtable"""
+        if inp == "rt":
+            print(tabulate(self.client.protocoll.routingTable.getTable(), tablefmt="plain"))
+            return
+        if inp == "rrt":
+            print(tabulate(self.client.protocoll.reverseRoutingTable.getTable(), tablefmt="plain"))
             return
 
     def do_process(self, inp):

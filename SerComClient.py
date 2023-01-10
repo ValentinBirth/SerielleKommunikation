@@ -24,7 +24,7 @@ class SerCom():
         while self.connected:
             if self.ser.in_waiting > 0:
                 data = self.ser.readline()
-                msg = data.decode("ascii").strip()
+                msg = data.decode("utf-8").strip()
                 msgMatch = re.match("AT,(OK|[0-9a-zA-Z.-]*(,OK)*)", msg) #cmd confirmation
                 if msgMatch is not None:
                     match = msgMatch.group()
@@ -43,7 +43,10 @@ class SerCom():
                 msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg) #msg from other modules
                 if msgMatch is not None:
                     self.logger.debug(msg)
-                    self.protocoll.parse(msg)
+                    try:
+                        self.protocoll.parse(msg)
+                    except Exception as err:
+                        self.logger.error(err)
             time.sleep(0.01)
 
     def writing(self):
@@ -53,7 +56,7 @@ class SerCom():
                 if not self.inProcessing:
                     msg = str(self.outputQueue.get())
                     msg = msg.strip()+"\r\n"
-                    self.ser.write(msg.encode("ascii"))
+                    self.ser.write(msg.encode("utf-8"))
                     self.inProcessing = True
             time.sleep(0.01)
 
