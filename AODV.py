@@ -8,7 +8,7 @@ import threading
 
 # TODO
 # implement startup/reboot sequence
-# checkRREQBuffer, checkForRouteLifetime not Threadsafe
+# checkRREQBuffer, checkForRouteLifetime, checkForResponse not Threadsafe
 # reverse Route not established correctly
 # implement UD Forwarding if i am not dest
 # Userdata encoding not working
@@ -34,14 +34,15 @@ AttributeError: 'bytes' object has no attribute 'encode'. Did you mean: 'decode'
 logging.basicConfig(level=logging.DEBUG)
 
 class Route:
-    destinationAdress = ""
-    destinationSequenceNumber = 0
-    isDestinationSequenceNumberValid = False
-    hopCount = 0
-    nextHop = ""
-    precursers = []
-    lifetime = 0
-    active = False
+    def __init__(self) -> None:
+        self.destinationAdress = ""
+        self.destinationSequenceNumber = 0
+        self.isDestinationSequenceNumberValid = False
+        self.hopCount = 0
+        self.nextHop = ""
+        self.precursers = []
+        self.lifetime = 0
+        self.active = False
 
     def __str__(self) -> str:
         return str(self.__dict__)
@@ -240,6 +241,7 @@ class RoutingTable:
         newRoute.lifetime = int(time()*1000)+rrep.lifetime
         newRoute.nextHop = rrep.previousHop
         newRoute.active = True
+        newRoute.hopCount = rrep.hopCount
         oldRoute = self.getEntry(rrep.destinationAdress)
         if oldRoute is None or self.isUpdatedNeeded(oldRoute,newRoute):
             self.table.update({newRoute.destinationAdress : newRoute})

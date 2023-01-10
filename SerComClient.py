@@ -24,7 +24,11 @@ class SerCom():
         while self.connected:
             if self.ser.in_waiting > 0:
                 data = self.ser.readline()
-                msg = data.decode("utf-8").strip()
+                try:
+                    msg = data.decode("utf-8").strip()
+                except Exception as err:
+                    self.logger.error(err)
+                    continue
                 msgMatch = re.match("AT,(OK|[0-9a-zA-Z.-]*(,OK)*)", msg) #cmd confirmation
                 if msgMatch is not None:
                     match = msgMatch.group()
