@@ -289,6 +289,9 @@ class AODV:
         except Exception as err:
             self.logger.error(err)
 
+    def processUD(self, ud:UserData):
+        print(ud.userData)
+
     def send(self, destinationAdress: str, payload: str):
         self.logger.debug("Sending: "+payload+" to: "+destinationAdress)
         msgLenght = len(payload)
@@ -381,6 +384,12 @@ class AODV:
             self.logger.error("Payload not BASE64 encoded: "+payload)
             return
         type = self.getPackageType(payload)
+        if type == 0:
+            package = RouteRequest()
+            self.logger.debug("Recieved User Data from "+addrStr)
+            package.decode(payload)
+            package.previousHop = addrStr
+            self.processUD(package)
         if type == 1:
             package = RouteRequest()
             self.logger.debug("Recieved RREQ from "+addrStr)
