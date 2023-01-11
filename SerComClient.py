@@ -3,7 +3,7 @@ import serial.tools.list_ports, serial
 import time
 import re
 from queue import Queue
-from AODV import AODV
+from AODV.AODV import AODV
 import logging
 
 class SerCom():
