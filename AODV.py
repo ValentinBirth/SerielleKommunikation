@@ -167,19 +167,21 @@ class RoutingTable:
 
     def checkForRouteLifetime(self):
         while True:
-            if len(self.table) > 0:
-                for destination in self.table:
-                    route = self.table[destination]
-                    routeLifetime = route.lifetime
-                    timestampMS = int(time()*1000)
-                    if routeLifetime - timestampMS < 0:
-                        self.table.pop(destination)
+            with self.tableLock:
+                if len(self.table) > 0:
+                    for destination in self.table:
+                        route = self.table[destination]
+                        routeLifetime = route.lifetime
+                        timestampMS = int(time()*1000)
+                        if routeLifetime - timestampMS < 0:
+                            self.table.pop(destination)
             sleep(0.01)
 
     def __init__(self) -> None:
         self.table = {}
+        self.tableLock = threading.Lock()
         self.logger = logging.getLogger(__name__)
-        #self.readThread = threading.Thread(target=self.checkForRouteLifetime, daemon=True).start()
+        self.readThread = threading.Thread(target=self.checkForRouteLifetime, daemon=True).start()
 
     def uintToInt(self, int: int):
         intbit = bitstring.BitArray(uint=int, length = 8)
@@ -202,22 +204,27 @@ class RoutingTable:
         if currentDestSeqNum == newDestSeqNum and newEntry.hopCount < currentEntry.hopCount:
             return True
 
+    def getEntry(self, destination: str) -> Route:
+        with self.tableLock:
+            return self.table.get(destination)
+
+    def updateEntry(self, newEntry: Route) -> None:
+        with self.tableLock:
+            self.table.update({newEntry.destinationAdress : newEntry})
+
     def hasEntryForDestination(self, destination: str) -> bool:
-        entry = self.table.get(destination)
+        entry = self.getEntry(destination)
         if entry is not None:
             self.logger.debug(entry.__dict__)
             return True
         self.logger.debug("No Entry for "+destination+" found")
 
     def hasValidEntryForDestination(self, destination: str) -> bool:
-        entry = self.table.get(destination)
+        entry = self.getEntry(destination)
         if entry is not None and entry.active:
             self.logger.debug(entry.__dict__)
             return True
         self.logger.debug("No Entry for "+destination+" found")
-
-    def getEntry(self, destination: str) -> Route:
-        return self.table.get(destination)
 
     def updateEntryWithDestination(self,destinationAdress: str):
         if not self.hasEntryForDestination(destinationAdress):
@@ -230,7 +237,7 @@ class RoutingTable:
             newRoute.hopCount = 1
             newRoute.nextHop = destinationAdress
             newRoute.active = False
-            self.table.update({newRoute.destinationAdress : newRoute})
+            self.updateEntry(newRoute)
 
     def updateEntryWithRREP(self, rrep: RouteReply):
         self.logger.debug("Updating Route to "+rrep.destinationAdress)
@@ -244,7 +251,7 @@ class RoutingTable:
         newRoute.hopCount = rrep.hopCount
         oldRoute = self.getEntry(rrep.destinationAdress)
         if oldRoute is None or self.isUpdatedNeeded(oldRoute,newRoute):
-            self.table.update({newRoute.destinationAdress : newRoute})
+            self.updateEntry(newRoute)
 
     def updateEntryWithRREQ(self, rreq: RouteRequest):
         self.logger.debug("Updating Route to "+rreq.originatorAdress)
@@ -263,10 +270,7 @@ class RoutingTable:
         newRoute.hopCount = rreq.hopCount
         newRoute.active = True
         if oldRoute is None or self.isUpdatedNeeded(oldRoute,newRoute):
-            self.table.update({newRoute.destinationAdress : newRoute})
-
-    def updateEntry(self, route: Route):
-        self.table.update({route.destinationAdress : route})
+            self.updateEntry(newRoute)
 
 class AODV:
     ACTIVE_ROUTE_TIMEOUT = int(3000)
@@ -285,9 +289,11 @@ class AODV:
         self.requestID = 0
         self.rreqBuffer = {}
         self.userDataBuffer = []
+        self.userDataBufferLock = threading.Lock()
+        self.rreqBufferLock = threading.Lock()
         self.logger = logging.getLogger(__name__)
-        #self.readThread = threading.Thread(target=self.checkForResponse, daemon=True).start()
-        #self.readThread = threading.Thread(target=self.checkRREQBuffer, daemon=True).start()
+        self.readThread = threading.Thread(target=self.checkForResponse, daemon=True).start()
+        self.readThread = threading.Thread(target=self.checkRREQBuffer, daemon=True).start()
 
     def incrementSequenceNumber(self):
         self.sequenceNumber += 1
@@ -303,9 +309,10 @@ class AODV:
 
     def processRREQ(self, rreq: RouteRequest):
         #self.routingTable.updateEntryWithDestination(rreq.previousHop)
-        for entry in self.rreqBuffer:
-            if (rreq.requestID,rreq.originatorAdress) == entry:
-                return
+        with self.rreqBufferLock:
+            for entry in self.rreqBuffer:
+                if (rreq.requestID,rreq.originatorAdress) == entry:
+                    return
         rreq.incrementHopCount()
         self.reverseRoutingTable.updateEntryWithRREQ(rreq)
         if rreq.destinationAdress is not self.ownAdress:
@@ -358,7 +365,8 @@ class AODV:
             self.send(self.routingTable.getEntry(destination).nextHop,userData.encode())
             return
         self.generateRREQ(userData.destinationAdress,True,0)
-        self.userDataBuffer.append(userData)
+        with self.userDataBufferLock:
+            self.userDataBuffer.append(userData)
             
 
     def generateRREP(self, rreq: RouteRequest):
@@ -393,21 +401,22 @@ class AODV:
 
     def checkForResponse(self):
         while True:
-            if len(self.userDataBuffer) > 0:
-                for userData in self.userDataBuffer:
-                    waitingTime = AODV.NET_TRAVERSAL_TIME
-                    if userData.numRetries > AODV.RREQ_RETRIES:
-                        self.userDataBuffer.remove(userData)
-                        self.logger.error("Destimation "+userData.destinationAdress +" unreachable")
-                    while userData.numRetries <= AODV.RREQ_RETRIES:
-                        if self.routingTable.hasValidEntryForDestination(userData.destinationAdress):
-                            self.send(self.routingTable.getEntry(userData.destinationAdress).nextHop,userData.encode())
-                            continue
-                        sleep(waitingTime)
-                        userData.numRetries +=1
-                        self.generateRREQ(userData.destinationAdress,True,0)
-                        waitingTime = 2^userData.numRetries*AODV.NET_TRAVERSAL_TIME
-            sleep(0.01)
+            with self.userDataBufferLock:
+                if len(self.userDataBuffer) > 0:
+                    for userData in self.userDataBuffer:
+                        waitingTime = AODV.NET_TRAVERSAL_TIME
+                        if userData.numRetries > AODV.RREQ_RETRIES:
+                            self.userDataBuffer.remove(userData)
+                            self.logger.error("Destimation "+userData.destinationAdress +" unreachable")
+                        while userData.numRetries <= AODV.RREQ_RETRIES:
+                            if self.routingTable.hasValidEntryForDestination(userData.destinationAdress):
+                                self.send(self.routingTable.getEntry(userData.destinationAdress).nextHop,userData.encode())
+                                continue
+                            sleep(waitingTime)
+                            userData.numRetries +=1
+                            self.generateRREQ(userData.destinationAdress,True,0)
+                            waitingTime = 2^userData.numRetries*AODV.NET_TRAVERSAL_TIME
+            sleep(AODV.NET_TRAVERSAL_TIME)
 
     def generateRREQ(self, destinationAdress: str,isSequenceNumberUnknown: bool, destinationSequenceNumber: str):
         self.logger.debug("Generating RREQ to "+destinationAdress)
@@ -422,7 +431,8 @@ class AODV:
         rreq.hopCount = 0
         rreq.destinationAdress = destinationAdress
         rreq.originatorAdress = self.ownAdress
-        self.rreqBuffer[(rreq.requestID,rreq.originatorAdress)] = int(time()*1000)
+        with self.rreqBufferLock:
+            self.rreqBuffer[(rreq.requestID,rreq.originatorAdress)] = int(time()*1000)
         self.send("FFFF", rreq.encode())
 
     def parse(self, msg:str):
@@ -464,11 +474,12 @@ class AODV:
 
     def checkRREQBuffer(self):
         while True:
-            if len(self.rreqBuffer) > 0:
-                for entry in self.rreqBuffer:
-                    entryTimeStamp = self.rreqBuffer[entry]
-                    entryTimeStamp += AODV.PATH_DISCOVERY_TIME
-                    timestampMS = int(time()*1000)
-                    if entryTimeStamp - timestampMS < 0:
-                        self.rreqBuffer.pop(entry)
-            sleep(0.01)
+            with self.rreqBufferLock:
+                if len(self.rreqBuffer) > 0:
+                    for entry in self.rreqBuffer:
+                        entryTimeStamp = self.rreqBuffer[entry]
+                        entryTimeStamp += AODV.PATH_DISCOVERY_TIME
+                        timestampMS = int(time()*1000)
+                        if entryTimeStamp - timestampMS < 0:
+                            self.rreqBuffer.pop(entry)
+            sleep(AODV.PATH_DISCOVERY_TIME)
