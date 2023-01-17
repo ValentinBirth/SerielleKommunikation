@@ -9,6 +9,7 @@ import threading
 # implement startup/reboot sequence
 # reverse Route not established correctly
 # Userdata encoding not working
+# improve taular output
 
 class Route:
     def __init__(self) -> None:
@@ -100,6 +101,9 @@ class RouteRequest:
         self.hopCount +=1
         self.hopCount = self.hopCount % 63
 
+    def __str__(self) -> str:
+        return f"Unknown Sequence Number: {self.unknownSequenceNumber}\nHopcount: {self.hopCount}\nRequest ID: {self.requestID}\nDestination Adress: {self.destinationAdress}\nDestination Sequence Number: {self.destinationSequence}\nOriginator Adress: {self.originatorAdress}\nOriginator Sequence Number: {self.originatorSequence}\n"
+
 class RouteReply:
     def __init__(self) -> None:
         self.type = 2
@@ -134,6 +138,8 @@ class RouteReply:
         self.hopCount +=1
         self.hopCount = self.hopCount % 63
 
+    def __str__(self) -> str:
+        return f"Lifetime: {self.lifetime}\nHopcount: {self.hopCount}\nDestination Adress: {self.destinationAdress}\nDestination Sequence Number: {self.destinationSequence}\nOriginator Adress: {self.originatorAdress}\n"
 class RoutingTable:
     def getTable(self) -> list:
         routeDict = {}
@@ -141,12 +147,11 @@ class RoutingTable:
             routeDict[route] = str(self.table.get(route))
         return list(routeDict.items())
 
-
     def checkForRouteLifetime(self):
         while True:
             with self.tableLock:
                 if len(self.table) > 0:
-                    for destination in self.table:
+                    for destination in list(self.table):
                         route = self.table[destination]
                         routeLifetime = route.lifetime
                         timestampMS = int(time()*1000)
@@ -285,7 +290,14 @@ class AODV:
         self.requestID += 1
         self.requestID = self.requestID % 63
 
+    def getUserDataBuffer(self) -> list:
+        udStrList = []
+        for ud in self.userDataBuffer:
+            udStrList.append(str(ud.__dict__))
+        return udStrList
+
     def processRREQ(self, rreq: RouteRequest):
+        self.logger.debug(rreq.previousHop+" send RREQ with:\n"+str(rreq))
         #self.routingTable.updateEntryWithDestination(rreq.previousHop)
         with self.rreqBufferLock:
             for entry in self.rreqBuffer:
@@ -301,7 +313,7 @@ class AODV:
         
     
     def processRREP(self, rrep: RouteReply):
-        self.logger.debug(rrep.__dict__)
+        self.logger.debug(rrep.previousHop+" send RREP with:\n"+str(rrep))
         #self.routingTable.updateEntryWithDestination(rrep.previousHop)
         rrep.incrementHopCount()
         self.routingTable.updateEntryWithRREP(rrep)
@@ -375,7 +387,7 @@ class AODV:
             rrep.lifetime = forwardRoute.lifetime - int(time()*1000)
             self.send(rreq.originatorAdress, rrep.encode())
             return
-        self.logger.error("RREP could not be sent")
+        self.logger.error("No route to "+rreq.destinationAdress +" exist")
 
     def checkForResponse(self):
         while True:
@@ -417,7 +429,6 @@ class AODV:
         msgList = msg.split(",")
         addrStr = msgList[1]
         payload = msgList[3]
-        self.logger.debug("Parsed: "+payload+" from: "+addrStr)
         #payloadMatch = re.match("^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",payload)# check for BASE64 String
         #if payloadMatch is None:
         #    self.logger.error("Payload not BASE64 encoded: "+payload)
@@ -425,19 +436,16 @@ class AODV:
         type = self.getPackageType(payload)
         if type == 0:
             package = UserData()
-            self.logger.debug("Recieved User Data from "+addrStr)
             package.decode(payload)
             package.previousHop = addrStr
             self.processUD(package)
         if type == 1:
             package = RouteRequest()
-            self.logger.debug("Recieved RREQ from "+addrStr)
             package.decode(payload)
             package.previousHop = addrStr
             self.processRREQ(package)
         if type == 2:
             package = RouteReply()
-            self.logger.debug("Recieved RREP from "+addrStr)
             package.decode(payload)
             package.previousHop = addrStr
             self.processRREP(package)
@@ -454,7 +462,7 @@ class AODV:
         while True:
             with self.rreqBufferLock:
                 if len(self.rreqBuffer) > 0:
-                    for entry in self.rreqBuffer:
+                    for entry in list(self.rreqBuffer):
                         entryTimeStamp = self.rreqBuffer[entry]
                         entryTimeStamp += AODV.PATH_DISCOVERY_TIME
                         timestampMS = int(time()*1000)

@@ -50,7 +50,7 @@ class SerCom():
                     try:
                         self.protocoll.parse(msg)
                     except Exception as err:
-                        self.logger.error(err)
+                        self.logger.exception(err)
             time.sleep(0.01)
 
     def writing(self):

@@ -56,6 +56,10 @@ class MainPrompt(Cmd):
             print(tabulate(self.client.protocoll.reverseRoutingTable.getTable(), tablefmt="plain"))
             return
 
+    def do_udBuffer(self, inp):
+        """ Prints User Data Buffer"""
+        print(self.client.protocoll.getUserDataBuffer())
+
     def do_process(self, inp):
         print(self.client.inProcessing)
  
