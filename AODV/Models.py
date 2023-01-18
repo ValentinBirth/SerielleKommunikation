@@ -4,6 +4,10 @@ import base64
 import bitstring
 from time import time, sleep
 import threading
+
+## TODO
+# Routing Table tabular representation not working
+logging.basicConfig(level=logging.DEBUG)
 class Route:
     def __init__(self) -> None:
         self.destinationAdress = ""
@@ -15,8 +19,11 @@ class Route:
         self.lifetime = 0
         self.active = False
 
+    def asList(self):
+        return [self.destinationAdress,self.destinationSequenceNumber,self.isDestinationSequenceNumberValid,self.hopCount,self.nextHop,self.precursers,self.lifetime,self.active]
+
     def __str__(self) -> str:
-        return str(self.__dict__)
+        return str(self.asList())
 
 class UserData:
     def __init__(self) -> None:
@@ -28,6 +35,7 @@ class UserData:
 
         self.format = "uint6=type, hex16=destinationAdress"
         self.unpackformat = self.format + ", bits=userData"
+        self.previousHop = None
 
     def decode(self, msg: str):
         base64_bytes = msg.encode("utf-8")
@@ -45,6 +53,12 @@ class UserData:
         byteArray.append(udbin)
         base64string = base64.b64encode(byteArray.tobytes())
         return base64string.decode("utf-8")
+
+    def __str__(self) -> str:
+        return f"""------User Data from {self.previousHop}---------
+Destination Adress: {self.destinationAdress}
+User Data: {self.userData}
+-----------------------------------"""
 
 class RouteRequest:
     def __init__(self) -> None:
@@ -64,7 +78,7 @@ class RouteRequest:
         self.format = "uint6=type, bool1=unknownSequenceNumber, bool1=flagTwo, bool1=flagThree, bool1=flagFour, bool1=flagFive, bool1=flagSix, uint6=hopCount, uint6=requestID, hex16=destinationAdress, uint8=destinationSequence, hex16=originatorAdress, uint8=originatorSequence"
 
         self.logger = logging.getLogger(__name__)
-        self.previousHop = ""
+        self.previousHop = None
 
     def decode(self, msg: str):
         base64_bytes = msg.encode("utf-8")
@@ -95,7 +109,15 @@ class RouteRequest:
         self.hopCount = self.hopCount % 63
 
     def __str__(self) -> str:
-        return f"Unknown Sequence Number: {self.unknownSequenceNumber}\nHopcount: {self.hopCount}\nRequest ID: {self.requestID}\nDestination Adress: {self.destinationAdress}\nDestination Sequence Number: {self.destinationSequence}\nOriginator Adress: {self.originatorAdress}\nOriginator Sequence Number: {self.originatorSequence}\n"
+        return f"""---------RREQ from {self.previousHop}------------
+Unknown Sequence Number: {self.unknownSequenceNumber}
+Hopcount: {self.hopCount}
+Request ID: {self.requestID}
+Destination Adress: {self.destinationAdress}
+Destination Sequence Number: {self.destinationSequence}
+Originator Adress: {self.originatorAdress}
+Originator Sequence Number: {self.originatorSequence}
+-----------------------------------"""
 
 class RouteReply:
     def __init__(self) -> None:
@@ -107,7 +129,7 @@ class RouteReply:
         self.hopCount = 0
         self.format = "uint6=type, uint18=lifetime, hex16=destinationAdress, uint8=destinationSequence, hex16=originatorAdress, uint8=hopCount"
         
-        self.previousHop = ""
+        self.previousHop = None
 
     def decode(self, msg: str):
         base64_bytes = msg.encode("utf-8")
@@ -132,13 +154,20 @@ class RouteReply:
         self.hopCount = self.hopCount % 63
 
     def __str__(self) -> str:
-        return f"Lifetime: {self.lifetime}\nHopcount: {self.hopCount}\nDestination Adress: {self.destinationAdress}\nDestination Sequence Number: {self.destinationSequence}\nOriginator Adress: {self.originatorAdress}\n"
+        return f"""---------RREP from {self.previousHop}------------
+Lifetime: {self.lifetime}
+Hopcount: {self.hopCount}
+Destination Adress: {self.destinationAdress}
+Destination Sequence Number: {self.destinationSequence}
+Originator Adress: {self.originatorAdress}
+-----------------------------------"""
+
 class RoutingTable:
     def getTable(self) -> list:
-        routeDict = {}
+        rtList = []
         for route in self.table:
-            routeDict[route] = str(self.table.get(route))
-        return list(routeDict.items())
+            rtList.append(self.getEntry(route).asList())
+        return rtList
 
     def checkForRouteLifetime(self):
         while True:
@@ -150,13 +179,14 @@ class RoutingTable:
                         timestampMS = int(time()*1000)
                         if routeLifetime - timestampMS < 0:
                             self.table.pop(destination)
-            sleep(0.01)
+            sleep(Constants.MY_ROUTE_TIMEOUT/1000)
 
     def __init__(self) -> None:
         self.table = {}
         self.tableLock = threading.Lock()
         self.logger = logging.getLogger(__name__)
-        self.readThread = threading.Thread(target=self.checkForRouteLifetime, daemon=True).start()
+        self.routeLifetimeCheckThread = threading.Thread(target=self.checkForRouteLifetime, daemon=True)
+        self.routeLifetimeCheckThread.start()
 
     def uintToInt(self, int: int):
         intbit = bitstring.BitArray(uint=int, length = 8)
@@ -185,7 +215,7 @@ class RoutingTable:
 
     def updateEntry(self, newEntry: Route) -> None:
         with self.tableLock:
-            self.table.update({newEntry.destinationAdress : newEntry})
+            self.table.update(({newEntry.destinationAdress : newEntry}))
 
     def hasEntryForDestination(self, destination: str) -> bool:
         entry = self.getEntry(destination)

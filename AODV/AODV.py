@@ -28,8 +28,10 @@ class AODV:
         self.userDataBufferLock = threading.Lock()
         self.rreqBufferLock = threading.Lock()
         self.logger = logging.getLogger(__name__)
-        self.readThread = threading.Thread(target=self.checkForResponse, daemon=True).start()
-        self.readThread = threading.Thread(target=self.checkRREQBuffer, daemon=True).start()
+        self.readThread = threading.Thread(target=self.checkForResponse, daemon=True)
+        self.readThread.start()
+        self.checkRREQTread = threading.Thread(target=self.checkRREQBuffer, daemon=True)
+        self.checkRREQTread.start()
 
     def incrementSequenceNumber(self):
         self.sequenceNumber += 1
@@ -155,11 +157,11 @@ class AODV:
                             if self.routingTable.hasValidEntryForDestination(userData.destinationAdress):
                                 self.send(self.routingTable.getEntry(userData.destinationAdress).nextHop,userData.encode())
                                 continue
-                            sleep(waitingTime)
+                            sleep(waitingTime/1000)
                             userData.numRetries +=1
                             self.generateRREQ(userData.destinationAdress,True,0)
                             waitingTime = 2^userData.numRetries*Constants.NET_TRAVERSAL_TIME
-            sleep(Constants.NET_TRAVERSAL_TIME)
+            sleep(Constants.NET_TRAVERSAL_TIME/1000)
 
     def generateRREQ(self, destinationAdress: str,isSequenceNumberUnknown: bool, destinationSequenceNumber: str):
         self.logger.debug("Generating RREQ to "+destinationAdress)
@@ -221,4 +223,4 @@ class AODV:
                         timestampMS = int(time()*1000)
                         if entryTimeStamp - timestampMS < 0:
                             self.rreqBuffer.pop(entry)
-            sleep(Constants.PATH_DISCOVERY_TIME)
+            sleep(Constants.PATH_DISCOVERY_TIME/1000)
