@@ -6,7 +6,6 @@ from time import time, sleep
 import threading
 
 ## TODO
-# Routing Table tabular representation not working
 logging.basicConfig(level=logging.DEBUG)
 class Route:
     def __init__(self) -> None:
@@ -31,10 +30,11 @@ class UserData:
         self.type = 0
         self.destinationAdress = ""
         self.userData = ""
+        self.userDataBin = ""
         self.numRetries = 0
 
         self.format = "uint6=type, hex16=destinationAdress"
-        self.unpackformat = self.format + ", bits=userData"
+        self.unpackformat = self.format + ", bits=userDataBin"
         self.previousHop = None
 
     def decode(self, msg: str):
@@ -42,7 +42,6 @@ class UserData:
         message_bytes = base64.b64decode(base64_bytes)
         byteArray = bitstring.BitArray(bytes=message_bytes)
         arglist = byteArray.unpack(self.unpackformat)
-        print(arglist)
         self.type = arglist[0]
         self.destinationAdress = arglist[1]
         self.userData = arglist[2].tobytes().decode("utf-8")
@@ -220,16 +219,14 @@ class RoutingTable:
     def hasEntryForDestination(self, destination: str) -> bool:
         entry = self.getEntry(destination)
         if entry is not None:
-            self.logger.debug(entry.__dict__)
+            #self.logger.debug(entry.__dict__)
             return True
-        self.logger.debug("No Entry for "+destination+" found")
 
     def hasValidEntryForDestination(self, destination: str) -> bool:
         entry = self.getEntry(destination)
         if entry is not None and entry.active:
-            self.logger.debug(entry.__dict__)
+            #self.logger.debug(entry.__dict__)
             return True
-        self.logger.debug("No Entry for "+destination+" found")
 
     def updateEntryWithDestination(self,destinationAdress: str):
         if not self.hasEntryForDestination(destinationAdress):
@@ -270,7 +267,7 @@ class RoutingTable:
         newRoute.isDestinationSequenceNumberValid = True
         newRoute.destinationSequenceNumber = max(currentDesitantionSecquenceNumber,rreq.originatorSequence)
         newRoute.destinationAdress = rreq.originatorAdress
-        newRoute.lifetime = max(currentLifetime, int(time()*1000)+ 2*Constants.NET_TRAVERSAL_TIME - 2*rreq.hopCount* AODV.NODE_TRAVERSAL_TIME)
+        newRoute.lifetime = max(currentLifetime, int(time()*1000)+ 2*Constants.NET_TRAVERSAL_TIME - 2*rreq.hopCount* Constants.NODE_TRAVERSAL_TIME)
         newRoute.nextHop = rreq.previousHop
         newRoute.hopCount = rreq.hopCount
         newRoute.active = True

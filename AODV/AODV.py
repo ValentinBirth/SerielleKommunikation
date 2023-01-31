@@ -4,14 +4,12 @@ from time import time, sleep
 from queue import Queue
 import logging
 import threading
+import math
 from . import Models
 from . import Constants
 
 # TODO
 # implement startup/reboot sequence
-# reverse Route not established correctly
-# Userdata encoding not working
-# improve taular output
 
 logging.basicConfig(level=logging.DEBUG)
 class AODV:
@@ -79,7 +77,8 @@ class AODV:
             forwardRoute = self.routingTable.getEntry(rrep.destinationAdress)
             forwardRoute.precursers.append(reverseRoute.nextHop)
             nextHopRoute = self.routingTable.getEntry(reverseRoute.nextHop)
-            nextHopRoute.precursers.append(rrep.originatorAdress)
+            if nextHopRoute is not None:
+                nextHopRoute.precursers.append(rrep.originatorAdress)
             if rrep.originatorAdress != self.ownAdress:
                 self.send(reverseRoute.nextHop,rrep.encode())
             return
@@ -88,10 +87,12 @@ class AODV:
     def processUD(self, ud: Models.UserData):
         if ud.destinationAdress != self.ownAdress:
             forwardRoute = self.routingTable.getEntry(ud.destinationAdress)
+            if forwardRoute is None:
+                self.logger.error("No Forwardroute found for: \n"+str(ud))
+                return
             self.send(forwardRoute.nextHop,ud.encode())
             return
-        self.logger.debug(ud.__dict__)
-        print(ud.userData)
+        print(">> "+ud.userData)
 
     def send(self, destinationAdress: str, payload: str):
         self.logger.debug("Sending: "+payload+" to: "+destinationAdress)
@@ -105,7 +106,7 @@ class AODV:
     def sendUserData(self, destination: str, data: str):
         userData = Models.UserData()
         userData.destinationAdress = destination
-        userData.userData = data.encode("utf-8")
+        userData.userData = data
         if self.routingTable.hasValidEntryForDestination(destination):
             self.send(self.routingTable.getEntry(destination).nextHop,userData.encode())
             return
@@ -115,9 +116,9 @@ class AODV:
             
 
     def generateRREP(self, rreq: Models.RouteRequest):
-        self.logger.debug("Generate RREP for "+rreq.destinationAdress)
         rrep = Models.RouteReply()
         if rreq.destinationAdress == self.ownAdress:
+            self.logger.debug("Generate RREP for "+rreq.destinationAdress+", i am destination")
             rrep.destinationAdress = self.ownAdress
             rrep.originatorAdress = rreq.originatorAdress
             rrep.destinationSequence = self.sequenceNumber
@@ -140,27 +141,33 @@ class AODV:
             rrep.originatorAdress = rreq.originatorAdress
             rrep.destinationSequence = self.sequenceNumber
             rrep.lifetime = forwardRoute.lifetime - int(time()*1000)
+            self.logger.debug("Generate RREP for "+rreq.destinationAdress+" , route found")
             self.send(rreq.originatorAdress, rrep.encode())
             return
-        self.logger.error("No route to "+rreq.destinationAdress +" exist")
+        self.logger.debug("RREQ to: "+rreq.destinationAdress+" discarded, no Route Found")
 
     def checkForResponse(self):
         while True:
             with self.userDataBufferLock:
                 if len(self.userDataBuffer) > 0:
                     for userData in self.userDataBuffer:
+                        userData: Models.UserData
                         waitingTime = Constants.NET_TRAVERSAL_TIME
-                        if userData.numRetries > AODV.RREQ_RETRIES:
+                        if userData.numRetries >= AODV.RREQ_RETRIES:
                             self.userDataBuffer.remove(userData)
                             self.logger.error("Destimation "+userData.destinationAdress +" unreachable")
                         while userData.numRetries <= AODV.RREQ_RETRIES:
                             if self.routingTable.hasValidEntryForDestination(userData.destinationAdress):
+                                try:
+                                    self.userDataBuffer.remove(userData)
+                                except Exception:
+                                    pass
                                 self.send(self.routingTable.getEntry(userData.destinationAdress).nextHop,userData.encode())
-                                continue
+                                break
+                            userData.numRetries = userData.numRetries+1
                             sleep(waitingTime/1000)
-                            userData.numRetries +=1
                             self.generateRREQ(userData.destinationAdress,True,0)
-                            waitingTime = 2^userData.numRetries*Constants.NET_TRAVERSAL_TIME
+                            waitingTime = math.pow(2,userData.numRetries)*Constants.NET_TRAVERSAL_TIME
             sleep(Constants.NET_TRAVERSAL_TIME/1000)
 
     def generateRREQ(self, destinationAdress: str,isSequenceNumberUnknown: bool, destinationSequenceNumber: str):

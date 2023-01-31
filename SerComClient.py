@@ -34,7 +34,6 @@ class SerCom():
                     match = msgMatch.group()
                     if "SENDING" not in match: # not a cmd confirmation but not filtered by regex
                         self.inProcessing = False
-                    self.logger.debug(match)
                 msgMatch = re.match("AT *,*[0-9A-Z]{4}, *OK", msg) # adress of own module
                 if msgMatch is not None:
                     match = msgMatch.group()
@@ -46,7 +45,6 @@ class SerCom():
                     self.logger.error(msg)
                 msgMatch = re.match("LR, ?[0-9A-F]{4}, ?[0-9A-F]{2}, ?", msg) #msg from other modules
                 if msgMatch is not None:
-                    self.logger.debug(msg)
                     try:
                         self.protocoll.parse(msg)
                     except Exception as err:
@@ -95,7 +93,7 @@ class SerCom():
         self.writeThread = threading.Thread(target=self.writing, daemon=True).start()
         self.write("AT+DEST=FFFF")
         self.write("AT+ADDR?")
-        self.write("AT+CFG=433920000,5,6,10,4,1,0,0,0,0,3000,8,4")
+        self.write("AT+CFG=433920000,5,7,7,4,1,0,0,0,0,3000,8,4")
         self.write("AT+RX")
     
     def exit(self):
