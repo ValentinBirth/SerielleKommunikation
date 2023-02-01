@@ -2,9 +2,13 @@ from cmd import Cmd
 from SerComClient import SerCom
 from tabulate import tabulate
 import logging
+import logging.config
+import yaml
  
 class MainPrompt(Cmd):
-    logging.basicConfig(level=logging.ERROR)
+    with open('logconf.yaml', 'r') as f:
+        config = yaml.safe_load(f.read())
+        logging.config.dictConfig(config)
 
     logger = logging.getLogger(__name__)
     prompt = "sc> "

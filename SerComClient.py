@@ -7,14 +7,14 @@ from AODV.AODV import AODV
 import logging
 
 class SerCom():
-    logging.basicConfig(level=logging.DEBUG)
-
-    logger = logging.getLogger(__name__)
-    inputQueue = Queue(maxsize=0)
-    outputQueue = Queue(maxsize=0)
-    protocoll = AODV(outputQueue)
-    inProcessing = False
-    connected = False
+    def __init__(self) -> None:
+        self.logger = logging.getLogger(__name__)
+        self.inputQueue = Queue(maxsize=0)
+        self.outputQueue = Queue(maxsize=0)
+        self.protocoll = AODV(self.outputQueue)
+        self.inProcessing = False
+        self.connected = False
+        self.ser = None
 
     def send(self, destinaion: str, msg: str):
         self.protocoll.sendUserData(destinaion,msg)
@@ -98,4 +98,5 @@ class SerCom():
     
     def exit(self):
         self.connected = False
-        self.ser.close()
+        if self.ser is not None:
+            self.ser.close()

@@ -10,8 +10,7 @@ from . import Constants
 
 # TODO
 # implement startup/reboot sequence
-
-logging.basicConfig(level=logging.DEBUG)
+# redo loggin with color coding etc.
 class AODV:
     RREQ_RETRIES = int(2)
     def __init__(self, outputQueue: Queue):

@@ -5,8 +5,6 @@ import bitstring
 from time import time, sleep
 import threading
 
-## TODO
-logging.basicConfig(level=logging.DEBUG)
 class Route:
     def __init__(self) -> None:
         self.destinationAdress = ""
