@@ -49,7 +49,7 @@ class AODV:
         return udStrList
 
     def processRREQ(self, rreq: Models.RouteRequest):
-        self.logger.debug(rreq.previousHop+" send RREQ with:\n"+str(rreq))
+        self.logger.debug(rreq.previousHop+" send: "+str(rreq))
         #self.routingTable.updateEntryWithDestination(rreq.previousHop)
         with self.rreqBufferLock:
             for entry in self.rreqBuffer:
@@ -57,18 +57,26 @@ class AODV:
                     return
         rreq.incrementHopCount()
         self.reverseRoutingTable.updateEntryWithRREQ(rreq)
+        self.generateRREP(rreq)
+        """
         if rreq.destinationAdress is not self.ownAdress:
             if self.routingTable.hasValidEntryForDestination(rreq.destinationAdress):
-                self.send("FFFF", rreq.encode())
+                self.generateRREP(rreq)
                 return
-        self.generateRREP(rreq)
+            self.send("FFFF", rreq.encode())
+            return
+        else:
+            self.generateRREP(rreq)
+        """
         
     
     def processRREP(self, rrep: Models.RouteReply):
-        self.logger.debug(rrep.previousHop+" send RREP with:\n"+str(rrep))
+        self.logger.debug(rrep.previousHop+" send: "+str(rrep))
         #self.routingTable.updateEntryWithDestination(rrep.previousHop)
         rrep.incrementHopCount()
         self.routingTable.updateEntryWithRREP(rrep)
+        if rrep.originatorAdress == self.ownAdress:
+            return
         reverseRoute = self.reverseRoutingTable.getEntry(rrep.originatorAdress)
         if reverseRoute is not None:
             self.logger.debug("Process RREP RRTE: "+str(reverseRoute))
@@ -85,10 +93,12 @@ class AODV:
 
     def processUD(self, ud: Models.UserData):
         if ud.destinationAdress != self.ownAdress:
-            forwardRoute = self.routingTable.getEntry(ud.destinationAdress)
-            if forwardRoute is None:
-                self.logger.error("No Forwardroute found for: \n"+str(ud))
+            if not self.routingTable.hasValidEntryForDestination(ud.destinationAdress):
+                self.generateRREQ(ud.destinationAdress,True,0)
+                with self.userDataBufferLock:
+                    self.userDataBuffer.append(ud)
                 return
+            forwardRoute = self.routingTable.getEntry(ud.destinationAdress)
             self.send(forwardRoute.nextHop,ud.encode())
             return
         print(">> "+ud.userData)
@@ -143,7 +153,7 @@ class AODV:
             self.logger.debug("Generate RREP for "+rreq.destinationAdress+" , route found")
             self.send(rreq.originatorAdress, rrep.encode())
             return
-        self.logger.debug("RREQ to: "+rreq.destinationAdress+" discarded, no Route Found")
+        self.send("FFFF", rrep.encode())
 
     def checkForResponse(self):
         while True:
@@ -214,7 +224,10 @@ class AODV:
 
     def getPackageType(self, msg: str):
         base64_bytes = msg
-        message_bytes = base64.b64decode(base64_bytes)
+        try:
+            message_bytes = base64.b64decode(base64_bytes)
+        except Exception as err:
+            self.logger.error("Package type could not be identified Msg: "+msg)
         byteArray = bitstring.BitArray(bytes=message_bytes)
         type = byteArray[:6].uint
         return type

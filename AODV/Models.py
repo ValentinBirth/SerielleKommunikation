@@ -106,15 +106,7 @@ class RouteRequest:
         self.hopCount = self.hopCount % 63
 
     def __str__(self) -> str:
-        return f"""---------RREQ from {self.previousHop}------------
-Unknown Sequence Number: {self.unknownSequenceNumber}
-Hopcount: {self.hopCount}
-Request ID: {self.requestID}
-Destination Adress: {self.destinationAdress}
-Destination Sequence Number: {self.destinationSequence}
-Originator Adress: {self.originatorAdress}
-Originator Sequence Number: {self.originatorSequence}
------------------------------------"""
+        return f"""[RREQ, {self.previousHop}, {self.unknownSequenceNumber}, {self.hopCount}, {self.requestID}, {self.destinationAdress}, {self.destinationSequence}, {self.originatorAdress}, {self.originatorSequence}]"""
 
 class RouteReply:
     def __init__(self) -> None:
@@ -141,7 +133,6 @@ class RouteReply:
         self.hopCount = arglist[5]
 
     def encode(self):
-        print(self.__dict__)
         byteArray = bitstring.pack(self.format, **self.__dict__)
         base64string = base64.b64encode(byteArray.tobytes())
         return base64string.decode("utf-8")
@@ -151,13 +142,7 @@ class RouteReply:
         self.hopCount = self.hopCount % 63
 
     def __str__(self) -> str:
-        return f"""---------RREP from {self.previousHop}------------
-Lifetime: {self.lifetime}
-Hopcount: {self.hopCount}
-Destination Adress: {self.destinationAdress}
-Destination Sequence Number: {self.destinationSequence}
-Originator Adress: {self.originatorAdress}
------------------------------------"""
+        return f"""[RREP,{self.previousHop}, {self.lifetime}, {self.hopCount}, {self.destinationAdress}, {self.destinationSequence}, {self.originatorAdress}]"""
 
 class RoutingTable:
     def getTable(self) -> list:

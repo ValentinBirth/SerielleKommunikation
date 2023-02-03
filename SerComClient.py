@@ -27,7 +27,7 @@ class SerCom():
                 try:
                     msg = data.decode("utf-8").strip()
                 except Exception as err:
-                    self.logger.error(err)
+                    self.logger.error(str(err)+"Msg: "+msg)
                     continue
                 msgMatch = re.match("AT,(OK|[0-9a-zA-Z.-]*(,OK)*)", msg) #cmd confirmation
                 if msgMatch is not None:
@@ -88,6 +88,8 @@ class SerCom():
             self.ser = serial.Serial(inputPort)
         except KeyError:
             self.ser = serial.Serial(input("Manual Input: "))
+        except serial.SerialException:
+            self.logger.error("Serial Port could not be opened, please try again")
         self.connected = True
         self.readThread = threading.Thread(target=self.reading, daemon=True).start()
         self.writeThread = threading.Thread(target=self.writing, daemon=True).start()
