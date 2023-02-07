@@ -11,7 +11,7 @@ class MainPrompt(Cmd):
         logging.config.dictConfig(config)
 
     logger = logging.getLogger(__name__)
-    prompt = "sc> "
+    prompt = ""
     intro = "Welcome! Type ? to list commands"
     client = SerCom()
  

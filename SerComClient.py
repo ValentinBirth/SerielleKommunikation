@@ -39,6 +39,7 @@ class SerCom():
                     match = msgMatch.group()
                     ownAdress = match.split(",")[1].strip()
                     self.protocoll.ownAdress = ownAdress
+                    self.logger.debug("Own Adress: "+self.protocoll.ownAdress)
                 msgMatch = re.match("ERR:[A-Z_]*", msg) # err confirmation
                 if msgMatch is not None:
                     self.inProcessing = False
@@ -47,6 +48,8 @@ class SerCom():
                 if msgMatch is not None:
                     try:
                         self.protocoll.parse(msg)
+                    except UnicodeDecodeError as err:
+                        self.logger.exception("Cant decode in UTF-8: "+str(msg))
                     except Exception as err:
                         self.logger.exception(err)
             time.sleep(0.01)

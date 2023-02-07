@@ -153,7 +153,7 @@ class AODV:
             self.logger.debug("Generate RREP for "+rreq.destinationAdress+" , route found")
             self.send(rreq.originatorAdress, rrep.encode())
             return
-        self.send("FFFF", rrep.encode())
+        self.send("FFFF", rreq.encode())
 
     def checkForResponse(self):
         while True:
