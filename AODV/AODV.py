@@ -137,7 +137,10 @@ class AODV:
             if not self.sequenceNumber == rreq.destinationSequence:
                 self.decrementSequenceNumber()
             rrep.destinationSequence = self.sequenceNumber
-            self.send(rreq.originatorAdress, rrep.encode())
+            if rreq.previousHop != rreq.originatorAdress:
+                self.send(rreq.previousHop, rrep.encode())
+            else:
+                self.send(rreq.originatorAdress, rrep.encode())
             return
         if self.routingTable.hasValidEntryForDestination(rreq.destinationAdress):
             forwardRoute = self.routingTable.getEntry(rreq.destinationAdress)
@@ -151,7 +154,10 @@ class AODV:
             rrep.destinationSequence = self.sequenceNumber
             rrep.lifetime = forwardRoute.lifetime - int(time()*1000)
             self.logger.debug("Generate RREP for "+rreq.destinationAdress+" , route found")
-            self.send(rreq.originatorAdress, rrep.encode())
+            if rreq.previousHop != rreq.originatorAdress:
+                self.send(rreq.previousHop, rrep.encode())
+            else:
+                self.send(rreq.originatorAdress, rrep.encode())
             return
         self.send("FFFF", rreq.encode())
 
