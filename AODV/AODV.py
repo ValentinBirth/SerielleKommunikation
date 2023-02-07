@@ -226,11 +226,11 @@ class AODV:
         base64_bytes = msg
         try:
             message_bytes = base64.b64decode(base64_bytes)
+            byteArray = bitstring.BitArray(bytes=message_bytes)
+            type = byteArray[:6].uint
+            return type
         except Exception as err:
             self.logger.error("Package type could not be identified Msg: "+msg)
-        byteArray = bitstring.BitArray(bytes=message_bytes)
-        type = byteArray[:6].uint
-        return type
 
     def checkRREQBuffer(self):
         while True:
