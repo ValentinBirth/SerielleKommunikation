@@ -58,21 +58,10 @@ class AODV:
         rreq.incrementHopCount()
         self.reverseRoutingTable.updateEntryWithRREQ(rreq)
         self.generateRREP(rreq)
-        """
-        if rreq.destinationAdress is not self.ownAdress:
-            if self.routingTable.hasValidEntryForDestination(rreq.destinationAdress):
-                self.generateRREP(rreq)
-                return
-            self.send("FFFF", rreq.encode())
-            return
-        else:
-            self.generateRREP(rreq)
-        """
         
     
     def processRREP(self, rrep: Models.RouteReply):
         self.logger.debug(rrep.previousHop+" send: "+str(rrep))
-        #self.routingTable.updateEntryWithDestination(rrep.previousHop)
         rrep.incrementHopCount()
         self.routingTable.updateEntryWithRREP(rrep)
         if rrep.originatorAdress == self.ownAdress:
@@ -206,10 +195,6 @@ class AODV:
         msgList = msg.split(",")
         addrStr = msgList[1]
         payload = msgList[3]
-        #payloadMatch = re.match("^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",payload)# check for BASE64 String
-        #if payloadMatch is None:
-        #    self.logger.error("Payload not BASE64 encoded: "+payload)
-        #    return
         type = self.getPackageType(payload)
         if type == 0:
             package = Models.UserData()
